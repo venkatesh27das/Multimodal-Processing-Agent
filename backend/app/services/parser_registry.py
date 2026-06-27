@@ -3,6 +3,7 @@ from backend.app.schemas.parsers import (
     DeploymentMode,
     LatencyLevel,
     ParserDefinition,
+    ParserType,
 )
 
 
@@ -14,6 +15,7 @@ class ParserRegistry:
                 ParserDefinition(
                     parser_id="pdf_native_text",
                     name="PDF Native Text Parser",
+                    parser_type=ParserType.DETERMINISTIC,
                     supported_file_types=["pdf"],
                     supported_modalities=["document", "text"],
                     strengths=["Fast deterministic extraction for PDFs with text layers"],
@@ -28,6 +30,7 @@ class ParserRegistry:
                 ParserDefinition(
                     parser_id="docx_text",
                     name="DOCX Parser",
+                    parser_type=ParserType.DETERMINISTIC,
                     supported_file_types=["docx"],
                     supported_modalities=["document", "text"],
                     strengths=["Structured document text extraction"],
@@ -42,7 +45,8 @@ class ParserRegistry:
                 ParserDefinition(
                     parser_id="mock_vlm",
                     name="Mock VLM Parser",
-                    supported_file_types=["pdf", "png", "jpg", "jpeg"],
+                    parser_type=ParserType.VLM,
+                    supported_file_types=["pdf", "image"],
                     supported_modalities=["document", "image"],
                     strengths=["Placeholder for multimodal reasoning workflows"],
                     weaknesses=["No real parsing implemented yet"],
@@ -64,4 +68,3 @@ class ParserRegistry:
 
 
 parser_registry = ParserRegistry()
-

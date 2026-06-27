@@ -4,18 +4,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.api.routes import files, health, jobs, parsers
+from backend.app.api.routes import files, health, jobs, parsers, skills
 from backend.app.core.config import settings
-from backend.app.db.base import Base
-from backend.app.db.session import engine
-from backend.app.models import FileRecord, ParseJob
-
-__all__ = ["FileRecord", "ParseJob"]
+from backend.app.db.init_db import init_db
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    Base.metadata.create_all(bind=engine)
+    init_db()
     yield
 
 
@@ -40,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix=settings.api_prefix, tags=["files"])
     app.include_router(jobs.router, prefix=settings.api_prefix, tags=["jobs"])
     app.include_router(parsers.router, prefix=settings.api_prefix, tags=["parser-registry"])
+    app.include_router(skills.router, prefix=settings.api_prefix, tags=["skills-registry"])
 
     return app
 

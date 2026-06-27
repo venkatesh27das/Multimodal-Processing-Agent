@@ -74,5 +74,7 @@ Services:
 - `GET /api/v1/parse-jobs`
 - `GET /api/v1/parser-registry`
 - `GET /api/v1/parser-registry/{parser_id}`
+- `GET /api/v1/skills-registry`
+- `GET /api/v1/skills-registry/{skill_id}`
 
 See [docs/api_contract.md](docs/api_contract.md) for the initial contract details.

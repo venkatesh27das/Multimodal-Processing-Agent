@@ -1,0 +1,181 @@
+from datetime import datetime
+
+from pydantic import Field
+
+from backend.app.domain.enums import (
+    CostLevel,
+    DeploymentMode,
+    FileType,
+    JobStatus,
+    LatencyLevel,
+    Modality,
+    ParserType,
+    QualityStatus,
+    ReviewStatus,
+)
+from backend.app.schemas.common import APIModel
+
+
+class FileRecordRead(APIModel):
+    id: str
+    original_filename: str
+    file_type: FileType
+    mime_type: str
+    size_bytes: int = Field(ge=0)
+    checksum_sha256: str
+    source: str
+    storage_path: str
+    status: JobStatus
+    created_by: str
+    uploaded_at: datetime
+
+
+class FileProfileRead(APIModel):
+    id: str
+    file_id: str
+    file_type: FileType
+    modalities: list[Modality]
+    has_text_layer: bool | None
+    is_scanned: bool | None
+    page_count: int | None
+    table_likelihood: float | None
+    image_likelihood: float | None
+    language: str | None
+    layout_complexity: str | None
+    estimated_cost_class: str | None
+    recommended_parsing_strategy: str | None
+    created_at: datetime
+
+
+class ParserDefinitionRead(APIModel):
+    parser_id: str
+    name: str
+    parser_type: ParserType
+    supported_file_types: list[FileType]
+    supported_modalities: list[Modality]
+    strengths: list[str]
+    weaknesses: list[str]
+    cost_level: CostLevel
+    latency_level: LatencyLevel
+    quality_level: str
+    deployment_mode: DeploymentMode
+    enabled: bool
+    version: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillDefinitionRead(APIModel):
+    skill_id: str
+    name: str
+    description: str
+    supported_document_types: list[FileType]
+    extraction_schema: dict[str, object]
+    validation_rules: dict[str, object]
+    examples: list[dict[str, object]]
+    post_processing_hook: str | None
+    enabled: bool
+    version: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ParseJobCreate(APIModel):
+    file_id: str
+    parser_id: str | None = None
+    skill_id: str | None = None
+
+
+class ParseJobRead(APIModel):
+    id: str
+    file_id: str
+    status: JobStatus
+    parser_id: str | None
+    skill_id: str | None
+    quality_status: QualityStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class ParsingPlanRead(APIModel):
+    id: str
+    job_id: str
+    file_id: str
+    selected_parser_id: str
+    fallback_parser_id: str | None
+    selected_skill_id: str | None
+    output_contract: dict[str, object]
+    expected_assets: list[str]
+    quality_threshold: float
+    cost_profile: dict[str, object]
+    human_review_policy: dict[str, object]
+    decision_reason: str
+    created_at: datetime
+
+
+class ParserExecutionResultRead(APIModel):
+    id: str
+    job_id: str
+    parser_id: str
+    status: JobStatus
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_ms: int | None
+    confidence_score: float | None
+    output_payload: dict[str, object]
+    error_message: str | None
+    created_at: datetime
+
+
+class QualityReportRead(APIModel):
+    id: str
+    job_id: str
+    execution_result_id: str | None
+    quality_status: QualityStatus
+    parser_confidence: float | None
+    extraction_confidence: float | None
+    schema_validation_score: float | None
+    completeness_score: float | None
+    consistency_score: float | None
+    human_review_required: bool
+    quality_explanation: str
+    created_at: datetime
+
+
+class ParsedAssetRead(APIModel):
+    id: str
+    job_id: str
+    file_id: str
+    asset_type: str
+    document_metadata: dict[str, object]
+    parsed_text: str | None
+    layout_blocks: list[dict[str, object]]
+    tables: list[dict[str, object]]
+    image_descriptions: list[dict[str, object]]
+    structured_data: dict[str, object]
+    storage_path: str | None
+    created_at: datetime
+
+
+class ReviewItemRead(APIModel):
+    id: str
+    job_id: str
+    file_id: str
+    quality_report_id: str | None
+    status: ReviewStatus
+    reason: str
+    assigned_to: str | None
+    resolution_notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuditEventRead(APIModel):
+    id: str
+    actor: str
+    action: str
+    entity_type: str
+    entity_id: str
+    event_metadata: dict[str, object]
+    created_at: datetime
+

@@ -1,5 +1,27 @@
-from backend.app.models.file import FileRecord
-from backend.app.models.job import ParseJob
+from backend.app.models.domain import (
+    AuditEvent,
+    FileProfile,
+    FileRecord,
+    ParsedAsset,
+    ParseJob,
+    ParserDefinition,
+    ParserExecutionResult,
+    ParsingPlan,
+    QualityReport,
+    ReviewItem,
+    SkillDefinition,
+)
 
-__all__ = ["FileRecord", "ParseJob"]
-
+__all__ = [
+    "AuditEvent",
+    "FileProfile",
+    "FileRecord",
+    "ParsedAsset",
+    "ParseJob",
+    "ParserDefinition",
+    "ParserExecutionResult",
+    "ParsingPlan",
+    "QualityReport",
+    "ReviewItem",
+    "SkillDefinition",
+]

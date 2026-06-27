@@ -70,6 +70,7 @@ Response `202`:
   "file_id": "uuid",
   "status": "queued",
   "parser_id": null,
+  "skill_id": null,
   "quality_status": "not_evaluated",
   "created_at": "2026-06-27T00:00:00",
   "updated_at": "2026-06-27T00:00:00"
@@ -99,6 +100,7 @@ Response:
   {
     "parser_id": "pdf_native_text",
     "name": "PDF Native Text Parser",
+    "parser_type": "deterministic",
     "supported_file_types": ["pdf"],
     "supported_modalities": ["document", "text"],
     "strengths": ["Fast deterministic extraction for PDFs with text layers"],
@@ -120,3 +122,17 @@ Returns one parser definition.
 Errors:
 
 - `404` when the parser does not exist.
+
+## Skills Registry
+
+### `GET /skills-registry`
+
+Returns seeded skill definitions for reusable extraction workflows.
+
+### `GET /skills-registry/{skill_id}`
+
+Returns one skill definition.
+
+Errors:
+
+- `404` when the skill does not exist.
