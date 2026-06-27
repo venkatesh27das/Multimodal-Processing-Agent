@@ -9,8 +9,8 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border bg-white lg:block">
-      <div className="flex h-16 items-center border-b border-border px-6">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border bg-white lg:block">
+      <div className="flex h-16 items-center border-b border-border px-5">
         <div>
           <p className="text-sm font-semibold text-ink">Multimodal Agent</p>
           <p className="text-xs text-muted">Parsing orchestration</p>
@@ -19,15 +19,15 @@ export function Sidebar() {
       <nav className="space-y-1 px-3 py-4" aria-label="Primary navigation">
         {navigationItems.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          const active = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition",
+                "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition",
                 active
-                  ? "bg-[#E8F3F1] text-accent-strong"
+                  ? "bg-accent-soft text-accent-strong"
                   : "text-muted hover:bg-surface hover:text-ink",
               )}
             >
@@ -40,4 +40,3 @@ export function Sidebar() {
     </aside>
   );
 }
-

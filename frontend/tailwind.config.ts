@@ -12,8 +12,9 @@ const config: Config = {
         surface: "#F7F8FA",
         ink: "#172033",
         muted: "#5F6B7A",
-        accent: "#0F766E",
-        "accent-strong": "#115E59",
+        accent: "#EA580C",
+        "accent-strong": "#C2410C",
+        "accent-soft": "#FFF7ED",
       },
       boxShadow: {
         panel: "0 1px 2px rgba(18, 25, 38, 0.08)",
@@ -24,4 +25,3 @@ const config: Config = {
 };
 
 export default config;
-
