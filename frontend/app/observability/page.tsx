@@ -45,6 +45,7 @@ export default function ObservabilityPage() {
           api.getQualityMetrics(),
           api.getAuditEvents(25),
         ]);
+        setError(null);
         setData({ summary, parserUsage, quality, auditEvents: audit.events });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load observability metrics.");

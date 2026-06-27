@@ -1,32 +1,12 @@
 # Multimodal Processing Agent
 
-Enterprise-grade multimodal parsing orchestration platform. The current scaffold provides a runnable FastAPI backend, PostgreSQL-ready configuration with local SQLite fallback, and a Next.js TypeScript frontend shell for intake, jobs, registries, review, and observability.
+Enterprise MVP for multimodal file intake, parser selection, synchronous parsing orchestration, quality scoring, human review routing, asset publishing, skills, MCP tool wrappers, governance, audit, and observability.
 
-Full parsing is intentionally not implemented yet. This first version establishes clean boundaries, typed contracts, and local development ergonomics.
+Full production parsing is intentionally out of scope for this MVP. External OCR, VLM, speech, and document-intelligence adapters use mock or lightweight behavior unless their dependencies are available.
 
-## Project Structure
+## Local Setup
 
-```text
-backend/
-  app/
-    api/routes/          FastAPI route modules
-    core/                application settings
-    db/                  SQLAlchemy engine/session/base
-    models/              SQLAlchemy persistence models
-    schemas/             Pydantic API contracts
-    services/            storage and registry placeholders
-frontend/
-  app/                   Next.js App Router pages
-  components/            SaaS shell and shared UI
-  lib/                   typed frontend helpers
-docs/
-  architecture.md
-  api_contract.md
-```
-
-## Backend
-
-Create an environment and install dependencies:
+### Backend
 
 ```bash
 python -m venv .venv
@@ -36,7 +16,7 @@ cp .env.example .env
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-The default `DATABASE_URL` is `sqlite:///./local.db`, so the API runs locally without PostgreSQL. Tables are created at startup for the MVP scaffold.
+The default database is SQLite at `./local.db`. PostgreSQL is supported by setting `DATABASE_URL`.
 
 Health check:
 
@@ -44,17 +24,17 @@ Health check:
 curl http://localhost:8000/api/v1/health
 ```
 
-## Frontend
+### Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev -- --port 3000
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000` or `http://127.0.0.1:3000`.
 
-## Docker Compose
+### Docker Compose
 
 ```bash
 docker compose up --build
@@ -66,33 +46,106 @@ Services:
 - Web: `http://localhost:3000`
 - PostgreSQL: `localhost:5432`
 
-## Current API Surface
+## Environment
 
-- `GET /api/v1/health`
-- `POST /api/v1/files/upload`
-- `GET /api/v1/files/{file_id}`
-- `GET /api/v1/files/{file_id}/profile`
-- `GET /api/v1/files/{file_id}/assets`
-- `GET /api/v1/assets/{asset_id}`
-- `POST /api/v1/jobs/plan`
-- `POST /api/v1/jobs`
-- `GET /api/v1/jobs`
-- `GET /api/v1/jobs/{job_id}`
-- `GET /api/v1/jobs/{job_id}/plan`
-- `GET /api/v1/jobs/{job_id}/quality`
-- `GET /api/v1/jobs/{job_id}/assets`
-- `POST /api/v1/parse-jobs`
-- `GET /api/v1/parse-jobs`
-- `GET /api/v1/parser-registry`
-- `GET /api/v1/parser-registry/{parser_id}`
-- `POST /api/v1/parser-registry/candidates`
-- `POST /api/v1/parser-registry/{parser_id}/enable`
-- `POST /api/v1/parser-registry/{parser_id}/disable`
-- `GET /api/v1/skills-registry`
-- `GET /api/v1/skills-registry/{skill_id}`
-- `GET /api/v1/skills`
-- `GET /api/v1/skills/{skill_id}`
-- `POST /api/v1/skills/{skill_id}/test`
-- `GET /api/v1/mcp/tools`
+See [.env.example](.env.example).
 
-See [docs/api_contract.md](docs/api_contract.md) for the initial contract details.
+Important variables:
+
+- `DATABASE_URL`: SQLite or PostgreSQL SQLAlchemy URL.
+- `STORAGE_DIR`: local file storage directory.
+- `MAX_UPLOAD_BYTES`: upload size limit.
+- `CORS_ORIGINS`: JSON array of allowed frontend origins.
+- `LOG_LEVEL`: backend logging level.
+- `NEXT_PUBLIC_API_BASE_URL`: frontend API base URL.
+
+## Sample Files
+
+Use files in [sample_files](sample_files) for manual testing:
+
+- `invoice.html`: supported HTML invoice sample.
+- `contract.html`: supported HTML contract sample.
+- `low_confidence_image_placeholder.png.txt`: instructions for image review testing.
+
+## End-to-End Flow
+
+1. Upload a file from Home.
+2. Backend stores it locally, calculates checksum, and creates a `FileRecord`.
+3. File profiling detects file type, modalities, text/scanned signals, layout complexity, and recommended strategy.
+4. Parser selector creates an explainable plan.
+5. Orchestration runs the parser, evaluates quality, optionally triggers fallback, publishes a unified parsed asset, and creates review items when confidence is low.
+6. Audit and observability endpoints expose operational signals.
+
+## API Examples
+
+Upload a sample:
+
+```bash
+curl -F "file=@sample_files/invoice.html;type=text/html" \
+  http://localhost:8000/api/v1/files/upload
+```
+
+Create a parsing job:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_id": "replace-with-uploaded-file-id",
+    "requested_output_contract": {
+      "parsed_text": true,
+      "tables": true,
+      "entities": true,
+      "relationships": true,
+      "evidence_spans": true
+    },
+    "quality_target": "balanced",
+    "cost_profile": "balanced",
+    "latency_profile": "interactive",
+    "governance_constraints": {
+      "external_services_allowed": true
+    }
+  }'
+```
+
+View observability:
+
+```bash
+curl http://localhost:8000/api/v1/observability/summary
+curl http://localhost:8000/api/v1/observability/parser-usage
+curl http://localhost:8000/api/v1/observability/quality
+curl http://localhost:8000/api/v1/audit/events
+```
+
+More examples are in [docs/api_examples.md](docs/api_examples.md).
+
+## Current UI
+
+- Home / Upload
+- Jobs
+- Job Detail
+- Parser Registry
+- Skills Registry
+- Human Review Queue
+- Asset Viewer
+- Observability
+
+## Tests
+
+```bash
+pytest
+python -m ruff check backend tests
+cd frontend
+npm run typecheck
+npm run lint
+npm run build
+```
+
+## Known Limitations
+
+- Parsing is synchronous for MVP ergonomics; no queue worker is included yet.
+- External parser adapters are placeholders unless dependencies and credentials are added.
+- PII detection and restricted document detection are heuristic placeholders.
+- SQLite dev migrations are intentionally lightweight; production should use Alembic.
+- Review approve/reject UI is local-only until persisted review actions are implemented.
+- Authentication, authorization, tenant isolation, and secrets management are not implemented.

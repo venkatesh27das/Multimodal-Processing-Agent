@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from backend.app.core.logging import get_logger
 from backend.app.db.session import get_db
 from backend.app.domain.enums import FileType
 from backend.app.models.domain import FileProfile, FileRecord, ParsedAsset
@@ -11,6 +12,7 @@ from backend.app.services.file_storage import store_upload
 from backend.app.services.file_type import infer_file_type
 
 router = APIRouter(prefix="/files")
+logger = get_logger(__name__)
 
 
 @router.post("/upload", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -39,6 +41,12 @@ async def upload_file(
     db.add(profile)
     db.commit()
     db.refresh(record)
+    logger.info(
+        "file uploaded file_id=%s filename=%s file_type=%s",
+        record.id,
+        record.original_filename,
+        record.file_type,
+    )
 
     return FileUploadResponse(
         file_id=record.id,

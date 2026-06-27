@@ -98,6 +98,8 @@ The asset contract includes:
 
 Runs the synchronous MVP orchestration flow: plan, create job, execute parser, evaluate quality, optionally run fallback, publish asset, optionally create review item, and write audit events.
 
+Governance runs during planning. If `governance_constraints.block_restricted_documents` is `true` and the document is flagged as restricted, the API returns `409`.
+
 Response:
 
 ```json
@@ -217,6 +219,65 @@ Response:
 ### `GET /parser-registry`
 
 Returns registered parser definitions.
+
+## Observability
+
+### `GET /observability/summary`
+
+Returns job, fallback, review, latency, cost, and error-log metrics.
+
+Response:
+
+```json
+{
+  "jobs": {
+    "total_jobs": 1,
+    "completed_jobs": 1,
+    "failed_jobs": 0,
+    "review_required_jobs": 0,
+    "success_rate": 1
+  },
+  "fallback": {"count": 0, "rate": 0},
+  "review": {"count": 0, "rate": 0},
+  "latency": {"average_ms": 10, "p50_ms": 10, "p95_ms": 10, "max_ms": 10},
+  "cost": {"estimated_cost": 0, "currency": "USD"},
+  "error_logs": []
+}
+```
+
+### `GET /observability/parser-usage`
+
+Returns parser execution counts, success/error counts, fallback asset counts, average confidence, latency, and estimated cost by parser.
+
+### `GET /observability/quality`
+
+Returns quality status counts and low/medium/high score buckets.
+
+## Audit
+
+### `GET /audit/events`
+
+Returns recent audit events in reverse chronological order.
+
+Query parameters:
+
+- `limit`: integer from 1 to 250, default 50.
+
+## Known Error Responses
+
+- `400`: empty upload or malformed request.
+- `404`: missing file, profile, job, plan, quality report, or asset.
+- `409`: no parser candidate available or governance policy blocks processing.
+- `413`: upload exceeds `MAX_UPLOAD_BYTES`.
+- `422`: request validation failed.
+- `500`: unexpected server error.
+
+## Known Limitations
+
+- Parsing runs synchronously.
+- Several parser adapters are mock implementations.
+- Governance detectors are placeholders.
+- Review queue actions are not persisted yet.
 
 Response:
 

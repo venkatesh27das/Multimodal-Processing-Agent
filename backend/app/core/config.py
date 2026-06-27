@@ -10,11 +10,15 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "local"
     api_prefix: str = "/api/v1"
+    log_level: str = "INFO"
 
     database_url: str = "sqlite:///./local.db"
     storage_dir: Path = Path("./storage")
+    max_upload_bytes: int = 50 * 1024 * 1024
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -29,4 +33,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

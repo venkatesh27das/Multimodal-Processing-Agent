@@ -1,8 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import perf_counter
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette import status
 
 from backend.app.api.routes import (
     agent_skills,
@@ -16,13 +20,19 @@ from backend.app.api.routes import (
     skills,
 )
 from backend.app.core.config import settings
+from backend.app.core.logging import configure_logging, get_logger
 from backend.app.db.init_db import init_db
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_logging(settings.log_level)
+    logger.info("Starting %s %s", settings.app_name, settings.app_version)
     init_db()
     yield
+    logger.info("Stopping %s", settings.app_name)
 
 
 def create_app() -> FastAPI:
@@ -41,6 +51,44 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        started_at = perf_counter()
+        response = await call_next(request)
+        duration_ms = int((perf_counter() - started_at) * 1000)
+        logger.info(
+            "request method=%s path=%s status=%s duration_ms=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        response.headers["X-Process-Time-Ms"] = str(duration_ms)
+        return response
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        _: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        logger.warning("request validation failed errors=%s", exc.errors())
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": "Request validation failed", "errors": exc.errors()},
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("unexpected error path=%s", request.url.path, exc_info=exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Internal server error"},
+        )
 
     app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
     app.include_router(assets.router, prefix=settings.api_prefix, tags=["assets"])

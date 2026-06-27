@@ -2,11 +2,14 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from backend.app.core.logging import get_logger
 from backend.app.domain.enums import FileType, JobStatus
 from backend.app.models.domain import FileRecord, ParserExecutionResult
 from backend.app.parsers.base import ParseRequest
 from backend.app.services.audit_logger import audit_logger
 from backend.app.services.parser_registry import parser_registry
+
+logger = get_logger(__name__)
 
 
 class ExecutionEngine:
@@ -22,6 +25,11 @@ class ExecutionEngine:
         started_at = datetime.now(UTC)
 
         if parser is None:
+            logger.warning(
+                "parser implementation not found parser_id=%s job_id=%s",
+                parser_id,
+                job_id,
+            )
             completed_at = datetime.now(UTC)
             result = ParserExecutionResult(
                 job_id=job_id,
@@ -59,6 +67,11 @@ class ExecutionEngine:
                 output_payload=parse_result.model_dump(mode="json"),
             )
         except Exception as exc:
+            logger.exception(
+                "parser execution failed parser_id=%s job_id=%s",
+                parser_id,
+                job_id,
+            )
             completed_at = datetime.now(UTC)
             result = ParserExecutionResult(
                 job_id=job_id,
@@ -74,6 +87,14 @@ class ExecutionEngine:
 
         db.add(result)
         db.flush()
+        logger.info(
+            "parser executed parser_id=%s job_id=%s status=%s confidence=%s duration_ms=%s",
+            parser_id,
+            job_id,
+            result.status,
+            result.confidence_score,
+            result.duration_ms,
+        )
         audit_logger.log(
             db,
             actor="system",
@@ -94,4 +115,3 @@ class ExecutionEngine:
 
 
 execution_engine = ExecutionEngine()
-

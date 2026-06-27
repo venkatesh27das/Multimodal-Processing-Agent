@@ -1,82 +1,98 @@
 # Architecture
 
-## Goal
+## Purpose
 
-The Multimodal Parsing Agent is an orchestration platform for governed file intake, parser selection, parsing execution, quality evaluation, fallback planning, skills, and review workflows.
-
-This scaffold implements the platform frame only. Parsing adapters, agentic planning, quality evaluation, and MCP tool calls are intentionally placeholders.
+The Multimodal Parsing Agent coordinates governed file intake, parser selection, parsing execution, quality evaluation, fallback, skills, asset publishing, human review, audit, and observability.
 
 ## Backend Layers
 
-- `api/routes`: HTTP entry points for health, file intake, parse jobs, and parser registry.
-- `schemas`: Pydantic request and response contracts.
-- `models`: SQLAlchemy persistence models for file registry and parse jobs.
-- `db`: database engine, base model, session dependency, and local table initialization.
-- `services`: deterministic storage and parser registry placeholders.
+- `api/routes`: FastAPI route modules for files, jobs, assets, registries, skills, MCP, audit, and observability.
+- `schemas`: Pydantic API contracts, kept separate from SQLAlchemy models.
+- `models`: SQLAlchemy persistence models for files, profiles, parsers, skills, jobs, plans, executions, quality, assets, review items, and audit events.
+- `services`: File storage/profiling, parser registry, selector, planner, execution engine, fallback manager, quality evaluator, asset publisher, skills framework, governance, audit, and observability.
+- `parsers`: Base parser contract plus deterministic/mock parser implementations.
+- `skills`: Folder-based skill definitions with `SKILL.md`, `schema.json`, `validation_rules.yaml`, and examples.
 
-## Deterministic Boundaries
-
-The MVP keeps these concerns deterministic:
-
-- File registration metadata
-- MIME type and extension capture
-- Size and SHA-256 checksum
-- Local storage path
-- Database persistence
-- API response contracts
-
-Future agentic modules should sit behind typed service boundaries and produce explainable plans rather than mutating registry records directly.
-
-## Initial Data Flow
+## Flow
 
 ```mermaid
-flowchart LR
-  UI["Next.js Upload Card"] --> API["FastAPI Upload Route"]
-  API --> Storage["Local File Storage"]
-  API --> DB["File Registry Table"]
-  DB --> Job["Parse Job Placeholder"]
-  Job --> Registry["Parser Registry Placeholder"]
+flowchart TD
+  UI["Next.js UI"] --> Upload["POST /files/upload"]
+  Upload --> Storage["Local storage"]
+  Upload --> FileRecord["FileRecord"]
+  Upload --> Profile["FileProfile"]
+  UI --> Job["POST /jobs"]
+  Job --> Governance["Policy checker"]
+  Governance --> Selector["ParserSelector"]
+  Selector --> Plan["ParsingPlan"]
+  Plan --> Execute["ExecutionEngine"]
+  Execute --> Quality["QualityEvaluator"]
+  Quality --> Fallback{"Below threshold?"}
+  Fallback -->|yes| ExecuteFallback["Fallback parser"]
+  Fallback -->|no| Publish["AssetPublisher"]
+  ExecuteFallback --> Publish
+  Publish --> Asset["Unified ParsedAsset"]
+  Quality --> Review{"Low confidence?"}
+  Review -->|yes| ReviewItem["ReviewItem"]
+  Review -->|no| Done["Complete"]
+  Job --> Audit["AuditEvent"]
+  Asset --> Observability["Metrics APIs"]
 ```
 
-## Database
+## Governance
 
-`DATABASE_URL` defaults to SQLite for local testing:
+Governance is intentionally lightweight in the MVP:
 
-```text
-sqlite:///./local.db
-```
+- `PolicyChecker` runs during planning.
+- `PIIDetector` uses placeholder filename heuristics.
+- `RestrictedDocumentDetector` uses explicit constraints and filename hints.
+- Governance findings are recorded in parsing plan policy metadata and audit events.
+- Restricted documents can be blocked with `block_restricted_documents`.
 
-PostgreSQL is supported by setting:
+## Observability
 
-```text
-postgresql+psycopg://mpa:mpa@localhost:5432/mpa
-```
+Observability aggregates persisted state:
 
-Tables are created at API startup in this scaffold. A production version should add Alembic migrations before schema changes become meaningful.
+- job totals and success rate
+- parser execution and usage metrics
+- quality buckets
+- fallback and review frequency
+- latency metrics
+- estimated cost
+- parser execution errors
+- audit events
 
 ## Frontend
 
-The frontend uses Next.js App Router, TypeScript, and Tailwind CSS. It provides:
+The frontend is a compact enterprise SaaS console built with Next.js App Router, TypeScript, Tailwind CSS, and lucide icons.
 
-- Enterprise SaaS shell
-- Sidebar navigation
-- Header
-- Home upload surface
-- Jobs placeholder
-- Parser Registry placeholder
-- Skills Registry placeholder
-- Review Queue placeholder
-- Observability placeholder
+Primary views:
 
-The upload component is currently a UI surface. API wiring can be added once the parse-job workflow is ready.
+- Home / Upload
+- Jobs
+- Job Detail
+- Parser Registry
+- Skills Registry
+- Human Review Queue
+- Asset Viewer
+- Observability
 
-## Near-Term Next Steps
+## Storage And Database
 
-- Add Alembic migrations.
-- Wire frontend upload to `POST /api/v1/files/upload`.
-- Implement parser adapter base classes.
-- Add file profiling service.
-- Add parser scoring and explainable selection.
-- Add parse plan and execution state transitions.
-- Add skills folder convention and registry loader.
+Local MVP defaults:
 
+- SQLite: `sqlite:///./local.db`
+- file storage: `./storage`
+
+Docker Compose uses PostgreSQL and a named storage volume.
+
+## Production Hardening Still Needed
+
+- Alembic migrations
+- async worker queue
+- durable object storage
+- real OCR/VLM/speech adapter credentials
+- authentication and authorization
+- tenant isolation
+- persisted human review decisions
+- richer PII detection and policy packs

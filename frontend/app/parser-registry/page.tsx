@@ -63,9 +63,10 @@ export default function ParserRegistryPage() {
 }
 
 function TagList({ values }: { values: string[] }) {
+  const uniqueValues = Array.from(new Set(values));
   return (
     <div className="flex max-w-md flex-wrap gap-1.5">
-      {values.slice(0, 6).map((value) => (
+      {uniqueValues.slice(0, 6).map((value) => (
         <span key={value} className="rounded-full border border-border bg-white px-2 py-0.5 text-xs text-muted">
           {value}
         </span>

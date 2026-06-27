@@ -1,0 +1,2 @@
+This text file is a placeholder for image upload testing.
+For low-confidence review queue testing, upload a small .png file; the MVP image parser path uses mock OCR/VLM behavior and may trigger review depending on quality target.
