@@ -58,6 +58,51 @@ Returns the generated file profile with modality, scanned/text-layer signals, li
 
 ## Parse Jobs
 
+### `POST /jobs`
+
+Runs the synchronous MVP orchestration flow: plan, create job, execute parser, evaluate quality, optionally run fallback, publish asset, optionally create review item, and write audit events.
+
+Response:
+
+```json
+{
+  "job": {
+    "id": "uuid",
+    "file_id": "uuid",
+    "status": "complete",
+    "parser_id": "html_text",
+    "skill_id": null,
+    "quality_status": "passed",
+    "created_at": "2026-06-27T00:00:00",
+    "updated_at": "2026-06-27T00:00:00"
+  },
+  "plan": {},
+  "quality": {},
+  "assets": [],
+  "review_item": null
+}
+```
+
+### `GET /jobs`
+
+Returns parse jobs in reverse creation order.
+
+### `GET /jobs/{job_id}`
+
+Returns a parse job.
+
+### `GET /jobs/{job_id}/plan`
+
+Returns the persisted parsing plan for a job.
+
+### `GET /jobs/{job_id}/quality`
+
+Returns the latest quality report for a job.
+
+### `GET /jobs/{job_id}/assets`
+
+Returns parsed assets published for a job.
+
 ### `POST /jobs/plan`
 
 Creates an intelligent parser selection plan from a generated file profile.

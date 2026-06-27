@@ -132,6 +132,14 @@ class ParserSelectionResponse(APIModel):
     score_breakdown: list[ParserScoreBreakdown]
 
 
+class ParseJobRunResponse(APIModel):
+    job: "ParseJobRead"
+    plan: "ParsingPlanRead"
+    quality: "QualityReportRead"
+    assets: list["ParsedAssetRead"]
+    review_item: "ReviewItemRead | None" = None
+
+
 class ParseJobRead(APIModel):
     id: str
     file_id: str

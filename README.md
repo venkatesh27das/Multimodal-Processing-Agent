@@ -73,6 +73,12 @@ Services:
 - `GET /api/v1/files/{file_id}`
 - `GET /api/v1/files/{file_id}/profile`
 - `POST /api/v1/jobs/plan`
+- `POST /api/v1/jobs`
+- `GET /api/v1/jobs`
+- `GET /api/v1/jobs/{job_id}`
+- `GET /api/v1/jobs/{job_id}/plan`
+- `GET /api/v1/jobs/{job_id}/quality`
+- `GET /api/v1/jobs/{job_id}/assets`
 - `POST /api/v1/parse-jobs`
 - `GET /api/v1/parse-jobs`
 - `GET /api/v1/parser-registry`
