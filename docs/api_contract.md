@@ -58,6 +58,42 @@ Returns the generated file profile with modality, scanned/text-layer signals, li
 
 ## Parse Jobs
 
+### `POST /jobs/plan`
+
+Creates an intelligent parser selection plan from a generated file profile.
+
+Request:
+
+```json
+{
+  "file_id": "uuid",
+  "requested_output_contract": {
+    "tables": true
+  },
+  "quality_target": "balanced",
+  "cost_profile": "balanced",
+  "latency_profile": "interactive",
+  "governance_constraints": {
+    "external_services_allowed": true
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "file_id": "uuid",
+  "primary_parser_id": "pdf_native_text",
+  "fallback_parser_id": "azure_document_intelligence",
+  "secondary_parser_id": "mock_vlm",
+  "selected_skill_id": "table_normalization",
+  "decision_score": 0.72,
+  "decision_explanation": "Selected PDF Native Text Parser for pdf profile...",
+  "score_breakdown": []
+}
+```
+
 ### `POST /parse-jobs`
 
 Creates a placeholder parse job for a registered file.

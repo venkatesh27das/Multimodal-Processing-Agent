@@ -4,13 +4,16 @@ from pydantic import Field
 
 from backend.app.domain.enums import (
     CostLevel,
+    CostProfile,
     DeploymentMode,
     FileType,
     JobStatus,
     LatencyLevel,
+    LatencyProfile,
     Modality,
     ParserType,
     QualityStatus,
+    QualityTarget,
     ReviewStatus,
 )
 from backend.app.schemas.common import APIModel
@@ -97,6 +100,36 @@ class ParseJobCreate(APIModel):
     file_id: str
     parser_id: str | None = None
     skill_id: str | None = None
+
+
+class ParserSelectionRequest(APIModel):
+    file_id: str
+    requested_output_contract: dict[str, object] = Field(default_factory=dict)
+    quality_target: QualityTarget = QualityTarget.BALANCED
+    cost_profile: CostProfile = CostProfile.BALANCED
+    latency_profile: LatencyProfile = LatencyProfile.INTERACTIVE
+    governance_constraints: dict[str, object] = Field(default_factory=dict)
+
+
+class ParserScoreBreakdown(APIModel):
+    parser_id: str
+    expected_quality_score: float
+    cost_penalty: float
+    latency_penalty: float
+    risk_penalty: float
+    historical_success_bonus: float
+    total_score: float
+
+
+class ParserSelectionResponse(APIModel):
+    file_id: str
+    primary_parser_id: str
+    fallback_parser_id: str | None
+    secondary_parser_id: str | None
+    selected_skill_id: str | None
+    decision_score: float
+    decision_explanation: str
+    score_breakdown: list[ParserScoreBreakdown]
 
 
 class ParseJobRead(APIModel):

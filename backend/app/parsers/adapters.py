@@ -12,7 +12,7 @@ class AzureDocumentIntelligenceAdapter(BaseParser):
         latency_level=LatencyLevel.MEDIUM,
         expected_quality=0.84,
         version="0.1.0",
-        enabled=False,
+        enabled=True,
     )
 
     def parse(self, request: ParseRequest) -> ParseResult:
@@ -35,7 +35,7 @@ class TesseractAdapter(BaseParser):
         latency_level=LatencyLevel.MEDIUM,
         expected_quality=0.64,
         version="0.1.0",
-        enabled=False,
+        enabled=True,
     )
 
     def parse(self, request: ParseRequest) -> ParseResult:
@@ -58,7 +58,7 @@ class MockVlmParser(BaseParser):
         latency_level=LatencyLevel.HIGH,
         expected_quality=0.7,
         version="0.1.0",
-        enabled=False,
+        enabled=True,
     )
 
     def parse(self, request: ParseRequest) -> ParseResult:
@@ -73,4 +73,3 @@ class MockVlmParser(BaseParser):
             confidence_score=0.48,
             warnings=["Mock VLM parser used; no external model call performed."],
         )
-

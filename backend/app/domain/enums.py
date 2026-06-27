@@ -72,3 +72,20 @@ class DeploymentMode(StrEnum):
     MANAGED = "managed"
     EXTERNAL = "external"
 
+
+class QualityTarget(StrEnum):
+    LOW = "low"
+    BALANCED = "balanced"
+    HIGH = "high"
+
+
+class CostProfile(StrEnum):
+    LOW_COST = "low_cost"
+    BALANCED = "balanced"
+    PREMIUM = "premium"
+
+
+class LatencyProfile(StrEnum):
+    BATCH = "batch"
+    INTERACTIVE = "interactive"
+    REAL_TIME = "real_time"

@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
     app.include_router(files.router, prefix=settings.api_prefix, tags=["files"])
     app.include_router(jobs.router, prefix=settings.api_prefix, tags=["jobs"])
+    app.include_router(jobs.planning_router, prefix=settings.api_prefix, tags=["jobs"])
     app.include_router(parsers.router, prefix=settings.api_prefix, tags=["parser-registry"])
     app.include_router(skills.router, prefix=settings.api_prefix, tags=["skills-registry"])
 

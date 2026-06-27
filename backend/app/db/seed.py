@@ -87,8 +87,7 @@ def seed_registry_data(db: Session) -> None:
             db.add(ParserDefinition(**payload))
         else:
             for key, value in payload.items():
-                if key != "enabled":
-                    setattr(parser, key, value)
+                setattr(parser, key, value)
 
     for payload in SKILL_SEEDS:
         if db.get(SkillDefinition, payload["skill_id"]) is None:

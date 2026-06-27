@@ -45,22 +45,18 @@ def test_find_candidate_parsers_uses_file_profile_and_enabled_state() -> None:
     )
 
     candidates = parser_registry.find_candidate_parsers(db, profile)
-    assert [candidate.parser_id for candidate in candidates] == ["pdf_native_text"]
-
-    enabled = parser_registry.enable_parser(db, "azure_document_intelligence")
-    assert enabled is not None
-
-    candidates = parser_registry.find_candidate_parsers(db, profile)
     assert [candidate.parser_id for candidate in candidates] == [
         "azure_document_intelligence",
         "pdf_native_text",
+        "mock_vlm",
+        "tesseract_ocr",
     ]
 
-    disabled = parser_registry.disable_parser(db, "pdf_native_text")
+    disabled = parser_registry.disable_parser(db, "azure_document_intelligence")
     assert disabled is not None
 
     candidates = parser_registry.find_candidate_parsers(db, profile)
-    assert [candidate.parser_id for candidate in candidates] == ["azure_document_intelligence"]
+    assert "azure_document_intelligence" not in [candidate.parser_id for candidate in candidates]
 
 
 def test_get_list_enable_and_disable_parser() -> None:
@@ -68,11 +64,11 @@ def test_get_list_enable_and_disable_parser() -> None:
     seed_registry_data(db)
 
     assert len(parser_registry.list_parsers(db)) == 9
-    assert len(parser_registry.list_parsers(db, include_disabled=False)) == 6
+    assert len(parser_registry.list_parsers(db, include_disabled=False)) == 9
 
     parser = parser_registry.get_parser(db, "mock_vlm")
     assert parser is not None
-    assert parser.enabled is False
+    assert parser.enabled is True
 
     parser = parser_registry.enable_parser(db, "mock_vlm")
     assert parser is not None
@@ -103,4 +99,3 @@ def test_parser_instances_return_mock_parse_results() -> None:
     assert result.parser_id == "html_text"
     assert "Hello" in (result.parsed_text or "")
     assert result.confidence_score > 0
-
