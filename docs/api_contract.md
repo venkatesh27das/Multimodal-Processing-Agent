@@ -319,6 +319,12 @@ Request:
 }
 ```
 
+## MCP
+
+### `GET /mcp/tools`
+
+Returns demo metadata for callable MCP-style tools exposed by the parsing agent. See [docs/mcp_design.md](mcp_design.md) for the tool-to-backend mapping.
+
 Response:
 
 ```json

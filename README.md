@@ -93,5 +93,6 @@ Services:
 - `GET /api/v1/skills`
 - `GET /api/v1/skills/{skill_id}`
 - `POST /api/v1/skills/{skill_id}/test`
+- `GET /api/v1/mcp/tools`
 
 See [docs/api_contract.md](docs/api_contract.md) for the initial contract details.
