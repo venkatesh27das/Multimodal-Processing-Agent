@@ -1,0 +1,7 @@
+required_fields:
+  - summary
+  - action_items
+  - decisions
+notes:
+  - speaker_turns are optional for MVP
+

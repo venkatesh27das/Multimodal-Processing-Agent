@@ -1,0 +1,7 @@
+required_fields:
+  - title
+  - authors
+  - abstract
+notes:
+  - abstract can be a placeholder when not found
+

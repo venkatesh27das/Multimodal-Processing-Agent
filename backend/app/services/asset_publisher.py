@@ -10,6 +10,7 @@ from backend.app.models.domain import (
 )
 from backend.app.services.audit_logger import audit_logger
 from backend.app.services.output_contract import output_contract_builder
+from backend.app.services.skills_framework import SkillExecutionRequest, skill_executor
 
 
 class AssetPublisher:
@@ -38,6 +39,36 @@ class AssetPublisher:
             fallback_used=fallback_used,
             audit_events=audit_events,
         )
+        structured_data = contract["structured_data"]
+        if isinstance(structured_data, dict) and plan.selected_skill_id:
+            skill_result = skill_executor.execute(
+                plan.selected_skill_id,
+                SkillExecutionRequest(
+                    parsed_text=contract["parsed_text"]
+                    if isinstance(contract["parsed_text"], str)
+                    else None,
+                    structured_data=structured_data,
+                    tables=contract["tables"]
+                    if isinstance(contract["tables"], list)
+                    else [],
+                    entities=contract["entities"]
+                    if isinstance(contract["entities"], list)
+                    else [],
+                    relationships=contract["relationships"]
+                    if isinstance(contract["relationships"], list)
+                    else [],
+                    document_metadata=contract["document_metadata"]
+                    if isinstance(contract["document_metadata"], dict)
+                    else {},
+                ),
+            )
+            structured_data["skill_output"] = {
+                "skill_id": skill_result.skill_id,
+                "output": skill_result.output,
+                "valid": skill_result.valid,
+                "validation_errors": skill_result.validation_errors,
+            }
+
         asset = ParsedAsset(
             job_id=job_id,
             file_id=file_record.id,
@@ -62,7 +93,7 @@ class AssetPublisher:
             cost_estimate=contract["cost_estimate"],
             latency_ms=contract["latency_ms"],
             audit_trail=contract["audit_trail"],
-            structured_data=contract["structured_data"],
+            structured_data=structured_data,
             storage_path=None,
         )
         db.add(asset)

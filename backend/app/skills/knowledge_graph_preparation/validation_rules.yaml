@@ -1,0 +1,6 @@
+required_fields:
+  - entities
+  - relationships
+notes:
+  - relationships should reference known entities
+

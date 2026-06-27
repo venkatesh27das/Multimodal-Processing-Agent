@@ -17,6 +17,9 @@ from backend.app.schemas.domain import (
     QualityReportRead,
     ReviewItemRead,
     SkillDefinitionRead,
+    SkillRead,
+    SkillTestRequest,
+    SkillTestResponse,
 )
 
 __all__ = [
@@ -36,4 +39,7 @@ __all__ = [
     "QualityReportRead",
     "ReviewItemRead",
     "SkillDefinitionRead",
+    "SkillRead",
+    "SkillTestRequest",
+    "SkillTestResponse",
 ]

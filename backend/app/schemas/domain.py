@@ -96,6 +96,31 @@ class SkillDefinitionRead(APIModel):
     updated_at: datetime
 
 
+class SkillRead(APIModel):
+    skill_id: str
+    name: str
+    description: str
+    supported_document_types: list[FileType]
+    extraction_schema: dict[str, object] = Field(alias="schema")
+    validation_rules: dict[str, object]
+
+
+class SkillTestRequest(APIModel):
+    parsed_text: str | None = None
+    structured_data: dict[str, object] = Field(default_factory=dict)
+    tables: list[dict[str, object]] = Field(default_factory=list)
+    entities: list[dict[str, object]] = Field(default_factory=list)
+    relationships: list[dict[str, object]] = Field(default_factory=list)
+    document_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class SkillTestResponse(APIModel):
+    skill_id: str
+    output: dict[str, object]
+    valid: bool
+    validation_errors: list[str]
+
+
 class ParseJobCreate(APIModel):
     file_id: str
     parser_id: str | None = None

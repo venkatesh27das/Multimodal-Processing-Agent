@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["summary", "action_items", "decisions"],
+  "properties": {
+    "summary": {"type": "string"},
+    "action_items": {"type": "array"},
+    "decisions": {"type": "array"},
+    "speaker_turns": {"type": "array"}
+  }
+}
+

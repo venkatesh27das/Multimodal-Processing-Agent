@@ -1,0 +1,6 @@
+required_fields:
+  - parties
+  - obligations
+notes:
+  - parties should include at least one detected party when available
+

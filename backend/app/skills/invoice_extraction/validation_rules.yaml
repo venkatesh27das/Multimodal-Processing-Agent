@@ -1,0 +1,7 @@
+required_fields:
+  - invoice_number
+  - vendor_name
+  - total_amount
+notes:
+  - total_amount should be non-negative when detected
+

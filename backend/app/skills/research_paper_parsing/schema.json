@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["title", "authors", "abstract"],
+  "properties": {
+    "title": {"type": "string"},
+    "authors": {"type": "array"},
+    "abstract": {"type": "string"},
+    "sections": {"type": "array"},
+    "citations": {"type": "array"}
+  }
+}
+

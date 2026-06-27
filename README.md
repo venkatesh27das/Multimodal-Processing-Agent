@@ -90,5 +90,8 @@ Services:
 - `POST /api/v1/parser-registry/{parser_id}/disable`
 - `GET /api/v1/skills-registry`
 - `GET /api/v1/skills-registry/{skill_id}`
+- `GET /api/v1/skills`
+- `GET /api/v1/skills/{skill_id}`
+- `POST /api/v1/skills/{skill_id}/test`
 
 See [docs/api_contract.md](docs/api_contract.md) for the initial contract details.

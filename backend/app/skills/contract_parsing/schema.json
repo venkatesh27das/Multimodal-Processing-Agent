@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["parties", "effective_date", "obligations"],
+  "properties": {
+    "parties": {"type": "array"},
+    "effective_date": {"type": ["string", "null"]},
+    "obligations": {"type": "array"},
+    "governing_law": {"type": ["string", "null"]},
+    "clauses": {"type": "array"}
+  }
+}
+

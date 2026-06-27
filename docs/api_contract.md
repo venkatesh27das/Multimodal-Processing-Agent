@@ -284,3 +284,52 @@ Returns one skill definition.
 Errors:
 
 - `404` when the skill does not exist.
+
+## Agent Skills
+
+Skills are filesystem-backed folders under `backend/app/skills/{skill_id}` with:
+
+- `SKILL.md`
+- `schema.json`
+- `validation_rules.yaml`
+- `examples/`
+
+### `GET /skills`
+
+Returns loaded Agent Skills from disk.
+
+### `GET /skills/{skill_id}`
+
+Returns one loaded skill, including metadata, supported document types, schema, and validation rules.
+
+### `POST /skills/{skill_id}/test`
+
+Runs a skill against supplied mock content and validates the output against its JSON schema where possible.
+
+Request:
+
+```json
+{
+  "parsed_text": "Acme Corp invoice INV-123 total 42.50",
+  "structured_data": {},
+  "tables": [],
+  "entities": [],
+  "relationships": [],
+  "document_metadata": {}
+}
+```
+
+Response:
+
+```json
+{
+  "skill_id": "invoice_extraction",
+  "output": {
+    "invoice_number": "INV-123",
+    "vendor_name": "Acme",
+    "total_amount": 42.5
+  },
+  "valid": true,
+  "validation_errors": []
+}
+```

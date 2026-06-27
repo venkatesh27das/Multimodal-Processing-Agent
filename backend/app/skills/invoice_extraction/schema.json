@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["invoice_number", "vendor_name", "total_amount"],
+  "properties": {
+    "invoice_number": {"type": "string"},
+    "vendor_name": {"type": "string"},
+    "total_amount": {"type": "number"},
+    "due_date": {"type": ["string", "null"]},
+    "line_items": {"type": "array"}
+  }
+}
+

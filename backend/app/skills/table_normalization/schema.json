@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["tables"],
+  "properties": {
+    "tables": {"type": "array"},
+    "normalization_notes": {"type": "array"}
+  }
+}
+

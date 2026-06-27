@@ -1,0 +1,5 @@
+required_fields:
+  - tables
+notes:
+  - headers should be present when available
+
