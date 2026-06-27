@@ -266,6 +266,29 @@ class ParsedAsset(Base):
         nullable=False,
         default=list,
     )
+    audio_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    video_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunks: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False, default=list)
+    embeddings: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False, default=list)
+    entities: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False, default=list)
+    relationships: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    evidence_spans: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    quality_report: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    lineage: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    parser_used: Mapped[str] = mapped_column(String(128), nullable=False, default="unknown")
+    fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    skill_used: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cost_estimate: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    audit_trail: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False, default=list)
     structured_data: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     storage_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)

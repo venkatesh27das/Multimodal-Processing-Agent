@@ -51,6 +51,7 @@ class OrchestrationEngine:
         )
 
         results = [primary_result]
+        fallback_used = False
         if fallback_manager.should_fallback(
             quality_threshold=plan.quality_threshold,
             result=primary_result,
@@ -76,6 +77,7 @@ class OrchestrationEngine:
                 parser_id=plan.fallback_parser_id or "",
             )
             results.append(fallback_result)
+            fallback_used = True
 
         best_result = fallback_manager.choose_best_result(results)
         final_quality = quality_evaluator.evaluate(
@@ -90,6 +92,9 @@ class OrchestrationEngine:
             job_id=job.id,
             file_record=file_record,
             execution_result=best_result,
+            quality_report=final_quality,
+            plan=plan,
+            fallback_used=fallback_used and best_result.id != primary_result.id,
         )
 
         review_item = None
@@ -143,4 +148,3 @@ class OrchestrationEngine:
 
 
 orchestration_engine = OrchestrationEngine()
-

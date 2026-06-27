@@ -72,6 +72,8 @@ Services:
 - `POST /api/v1/files/upload`
 - `GET /api/v1/files/{file_id}`
 - `GET /api/v1/files/{file_id}/profile`
+- `GET /api/v1/files/{file_id}/assets`
+- `GET /api/v1/assets/{asset_id}`
 - `POST /api/v1/jobs/plan`
 - `POST /api/v1/jobs`
 - `GET /api/v1/jobs`

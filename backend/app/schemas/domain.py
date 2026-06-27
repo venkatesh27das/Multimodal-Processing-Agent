@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from backend.app.domain.enums import (
     CostLevel,
@@ -206,9 +206,29 @@ class ParsedAssetRead(APIModel):
     layout_blocks: list[dict[str, object]]
     tables: list[dict[str, object]]
     image_descriptions: list[dict[str, object]]
+    audio_transcript: str | None
+    video_transcript: str | None
+    chunks: list[dict[str, object]]
+    embeddings: list[dict[str, object]]
+    entities: list[dict[str, object]]
+    relationships: list[dict[str, object]]
+    evidence_spans: list[dict[str, object]]
+    quality_report: dict[str, object]
+    lineage: dict[str, object]
+    parser_used: str
+    fallback_used: bool
+    skill_used: str | None
+    cost_estimate: dict[str, object]
+    latency_ms: int | None
+    audit_trail: list[dict[str, object]]
     structured_data: dict[str, object]
     storage_path: str | None
     created_at: datetime
+
+    @computed_field
+    @property
+    def asset_id(self) -> str:
+        return self.id
 
 
 class ReviewItemRead(APIModel):

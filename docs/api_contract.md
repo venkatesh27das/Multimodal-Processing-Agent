@@ -56,6 +56,42 @@ Returns the file registry record.
 
 Returns the generated file profile with modality, scanned/text-layer signals, likelihood placeholders, layout estimate, and recommended parsing strategy.
 
+### `GET /files/{file_id}/assets`
+
+Returns unified parsed assets produced for the file.
+
+## Assets
+
+### `GET /assets/{asset_id}`
+
+Returns one unified parsed asset.
+
+The asset contract includes:
+
+- `asset_id`
+- `file_id`
+- `job_id`
+- `document_metadata`
+- `parsed_text`
+- `layout_blocks`
+- `tables`
+- `image_descriptions`
+- `audio_transcript`
+- `video_transcript`
+- `chunks`
+- `embeddings`
+- `entities`
+- `relationships`
+- `evidence_spans`
+- `quality_report`
+- `lineage`
+- `parser_used`
+- `fallback_used`
+- `skill_used`
+- `cost_estimate`
+- `latency_ms`
+- `audit_trail`
+
 ## Parse Jobs
 
 ### `POST /jobs`

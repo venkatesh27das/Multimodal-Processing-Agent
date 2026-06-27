@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
 from backend.app.domain.enums import FileType
-from backend.app.models.domain import FileProfile, FileRecord
-from backend.app.schemas.domain import FileProfileRead, FileRecordRead
+from backend.app.models.domain import FileProfile, FileRecord, ParsedAsset
+from backend.app.schemas.domain import FileProfileRead, FileRecordRead, ParsedAssetRead
 from backend.app.schemas.files import FileUploadResponse, ProcessingStatus
 from backend.app.services.file_profiling import file_profiler
 from backend.app.services.file_storage import store_upload
@@ -68,3 +68,11 @@ def get_file_profile(file_id: str, db: Session = Depends(get_db)) -> FileProfile
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File profile not found")
     return profile
+
+
+@router.get("/{file_id}/assets", response_model=list[ParsedAssetRead])
+def get_file_assets(file_id: str, db: Session = Depends(get_db)) -> list[ParsedAssetRead]:
+    file_record = db.get(FileRecord, file_id)
+    if file_record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return db.query(ParsedAsset).filter(ParsedAsset.file_id == file_id).all()

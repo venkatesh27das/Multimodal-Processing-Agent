@@ -243,9 +243,14 @@ def test_asset_is_published_for_completed_job(tmp_path: Path) -> None:
             asset = db.query(ParsedAsset).filter(ParsedAsset.job_id == job_id).one_or_none()
             assert asset is not None
             assert asset.asset_type == "unified_parsed_asset"
-            assert asset.document_metadata["parser_id"] == "html_text"
+            assert asset.parser_used == "html_text"
+            assert asset.fallback_used is False
+            assert asset.chunks
+            assert asset.embeddings
+            assert asset.entities
+            assert asset.quality_report["quality_status"] == QualityStatus.PASSED.value
+            assert asset.lineage["source_file_id"] == file_record.id
             assert "Asset text" in (asset.parsed_text or "")
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()
-
