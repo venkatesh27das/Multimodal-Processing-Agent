@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mpa
+      POSTGRES_USER: mpa
+      POSTGRES_PASSWORD: mpa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpa -d mpa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql+psycopg://mpa:mpa@db:5432/mpa
+      STORAGE_DIR: /app/storage
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - api_storage:/app/storage
+    command: >
+      sh -c "pip install -e '.[postgres]' &&
+             uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:22-alpine
+    working_dir: /app/frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/frontend/node_modules
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  api_storage:
+  frontend_node_modules:
+

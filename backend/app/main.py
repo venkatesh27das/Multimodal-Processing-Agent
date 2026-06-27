@@ -1,0 +1,47 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.api.routes import files, health, jobs, parsers
+from backend.app.core.config import settings
+from backend.app.db.base import Base
+from backend.app.db.session import engine
+from backend.app.models import FileRecord, ParseJob
+
+__all__ = ["FileRecord", "ParseJob"]
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        description="Enterprise multimodal parsing orchestration API.",
+        openapi_url=f"{settings.api_prefix}/openapi.json",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
+    app.include_router(files.router, prefix=settings.api_prefix, tags=["files"])
+    app.include_router(jobs.router, prefix=settings.api_prefix, tags=["jobs"])
+    app.include_router(parsers.router, prefix=settings.api_prefix, tags=["parser-registry"])
+
+    return app
+
+
+app = create_app()
