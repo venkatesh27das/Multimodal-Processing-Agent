@@ -93,6 +93,7 @@ class ParserDefinition(Base):
         nullable=False,
         default=LatencyLevel.LOW.value,
     )
+    expected_quality: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
     quality_level: Mapped[str] = mapped_column(String(64), nullable=False, default="medium")
     deployment_mode: Mapped[str] = mapped_column(
         String(64),

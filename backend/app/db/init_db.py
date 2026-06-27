@@ -45,6 +45,13 @@ def _apply_sqlite_dev_migrations() -> None:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE parse_jobs ADD COLUMN skill_id VARCHAR(128)"))
 
+    parser_columns = {column["name"] for column in inspector.get_columns("parser_definitions")}
+    if "expected_quality" not in parser_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE parser_definitions ADD COLUMN expected_quality FLOAT DEFAULT 0.5")
+            )
+
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)

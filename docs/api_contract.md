@@ -123,6 +123,29 @@ Errors:
 
 - `404` when the parser does not exist.
 
+### `POST /parser-registry/candidates`
+
+Returns enabled parsers whose file type and modality metadata match a file profile.
+
+Request:
+
+```json
+{
+  "file_type": "pdf",
+  "modalities": ["document", "text"],
+  "has_text_layer": true,
+  "is_scanned": false
+}
+```
+
+### `POST /parser-registry/{parser_id}/enable`
+
+Enables a parser definition.
+
+### `POST /parser-registry/{parser_id}/disable`
+
+Disables a parser definition.
+
 ## Skills Registry
 
 ### `GET /skills-registry`

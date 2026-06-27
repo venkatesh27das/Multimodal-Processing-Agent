@@ -21,6 +21,7 @@ class ParserDefinition(APIModel):
     weaknesses: list[str] = Field(default_factory=list)
     cost_level: CostLevel
     latency_level: LatencyLevel
+    expected_quality: float = Field(ge=0, le=1)
     quality_level: str
     deployment_mode: DeploymentMode
     enabled: bool

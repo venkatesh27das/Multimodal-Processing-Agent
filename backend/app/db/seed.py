@@ -1,63 +1,10 @@
 from sqlalchemy.orm import Session
 
 from backend.app.domain.enums import (
-    CostLevel,
-    DeploymentMode,
     FileType,
-    LatencyLevel,
-    Modality,
-    ParserType,
 )
 from backend.app.models.domain import ParserDefinition, SkillDefinition
-
-PARSER_SEEDS = [
-    {
-        "parser_id": "pdf_native_text",
-        "name": "PDF Native Text Parser",
-        "parser_type": ParserType.DETERMINISTIC.value,
-        "supported_file_types": [FileType.PDF.value],
-        "supported_modalities": [Modality.DOCUMENT.value, Modality.TEXT.value],
-        "strengths": ["Fast deterministic extraction for PDFs with text layers"],
-        "weaknesses": ["Poor fit for scanned or image-heavy PDFs"],
-        "cost_level": CostLevel.LOW.value,
-        "latency_level": LatencyLevel.LOW.value,
-        "quality_level": "medium",
-        "deployment_mode": DeploymentMode.LOCAL.value,
-        "enabled": True,
-        "version": "0.1.0",
-    },
-    {
-        "parser_id": "docx_text",
-        "name": "DOCX Parser",
-        "parser_type": ParserType.DETERMINISTIC.value,
-        "supported_file_types": [FileType.DOCX.value],
-        "supported_modalities": [Modality.DOCUMENT.value, Modality.TEXT.value],
-        "strengths": ["Structured document text extraction"],
-        "weaknesses": ["Complex embedded media support pending"],
-        "cost_level": CostLevel.LOW.value,
-        "latency_level": LatencyLevel.LOW.value,
-        "quality_level": "medium",
-        "deployment_mode": DeploymentMode.LOCAL.value,
-        "enabled": True,
-        "version": "0.1.0",
-    },
-    {
-        "parser_id": "mock_vlm",
-        "name": "Mock VLM Parser",
-        "parser_type": ParserType.VLM.value,
-        "supported_file_types": [FileType.PDF.value, FileType.IMAGE.value],
-        "supported_modalities": [Modality.DOCUMENT.value, Modality.IMAGE.value],
-        "strengths": ["Placeholder for multimodal reasoning workflows"],
-        "weaknesses": ["No real parsing implemented yet"],
-        "cost_level": CostLevel.HIGH.value,
-        "latency_level": LatencyLevel.HIGH.value,
-        "quality_level": "placeholder",
-        "deployment_mode": DeploymentMode.EXTERNAL.value,
-        "enabled": False,
-        "version": "0.1.0",
-    },
-]
-
+from backend.app.services.parser_registry import parser_registry
 
 SKILL_SEEDS = [
     {
@@ -134,9 +81,14 @@ SKILL_SEEDS = [
 
 
 def seed_registry_data(db: Session) -> None:
-    for payload in PARSER_SEEDS:
-        if db.get(ParserDefinition, payload["parser_id"]) is None:
+    for payload in parser_registry.metadata_payloads():
+        parser = db.get(ParserDefinition, payload["parser_id"])
+        if parser is None:
             db.add(ParserDefinition(**payload))
+        else:
+            for key, value in payload.items():
+                if key != "enabled":
+                    setattr(parser, key, value)
 
     for payload in SKILL_SEEDS:
         if db.get(SkillDefinition, payload["skill_id"]) is None:

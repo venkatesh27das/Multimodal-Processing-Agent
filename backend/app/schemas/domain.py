@@ -47,6 +47,18 @@ class FileProfileRead(APIModel):
     created_at: datetime
 
 
+class ParserCandidateRequest(APIModel):
+    file_type: FileType
+    modalities: list[Modality] = Field(default_factory=list)
+    has_text_layer: bool | None = None
+    is_scanned: bool | None = None
+    page_count: int | None = None
+    table_likelihood: float | None = None
+    image_likelihood: float | None = None
+    language: str | None = None
+    layout_complexity: str | None = None
+
+
 class ParserDefinitionRead(APIModel):
     parser_id: str
     name: str
@@ -57,6 +69,7 @@ class ParserDefinitionRead(APIModel):
     weaknesses: list[str]
     cost_level: CostLevel
     latency_level: LatencyLevel
+    expected_quality: float = Field(ge=0, le=1)
     quality_level: str
     deployment_mode: DeploymentMode
     enabled: bool
@@ -178,4 +191,3 @@ class AuditEventRead(APIModel):
     entity_id: str
     event_metadata: dict[str, object]
     created_at: datetime
-

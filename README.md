@@ -74,6 +74,9 @@ Services:
 - `GET /api/v1/parse-jobs`
 - `GET /api/v1/parser-registry`
 - `GET /api/v1/parser-registry/{parser_id}`
+- `POST /api/v1/parser-registry/candidates`
+- `POST /api/v1/parser-registry/{parser_id}/enable`
+- `POST /api/v1/parser-registry/{parser_id}/disable`
 - `GET /api/v1/skills-registry`
 - `GET /api/v1/skills-registry/{skill_id}`
 
