@@ -1,32 +1,16 @@
-from pathlib import Path
-
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
 from backend.app.domain.enums import FileType
-from backend.app.models.file import FileRecord
+from backend.app.models.domain import FileProfile, FileRecord
+from backend.app.schemas.domain import FileProfileRead, FileRecordRead
 from backend.app.schemas.files import FileUploadResponse, ProcessingStatus
+from backend.app.services.file_profiling import file_profiler
 from backend.app.services.file_storage import store_upload
+from backend.app.services.file_type import infer_file_type
 
 router = APIRouter(prefix="/files")
-
-
-def infer_file_type(filename: str) -> FileType:
-    suffix = Path(filename).suffix.lstrip(".").lower()
-    if suffix == "pdf":
-        return FileType.PDF
-    if suffix == "docx":
-        return FileType.DOCX
-    if suffix in {"png", "jpg", "jpeg", "gif", "webp", "tif", "tiff"}:
-        return FileType.IMAGE
-    if suffix in {"html", "htm"}:
-        return FileType.HTML
-    if suffix in {"mp3", "wav", "m4a", "aac", "flac"}:
-        return FileType.AUDIO
-    if suffix in {"mp4", "mov", "avi", "mkv", "webm"}:
-        return FileType.VIDEO
-    return FileType.UNKNOWN
 
 
 @router.post("/upload", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -35,7 +19,7 @@ async def upload_file(
     db: Session = Depends(get_db),
 ) -> FileUploadResponse:
     stored = await store_upload(file)
-    file_type = infer_file_type(stored.original_filename)
+    file_type = infer_file_type(stored.original_filename, stored.content_type)
 
     record = FileRecord(
         original_filename=stored.original_filename,
@@ -49,6 +33,10 @@ async def upload_file(
         created_by="local-user",
     )
     db.add(record)
+    db.flush()
+
+    profile = file_profiler.profile(record)
+    db.add(profile)
     db.commit()
     db.refresh(record)
 
@@ -64,3 +52,19 @@ async def upload_file(
         status=ProcessingStatus(record.status),
         uploaded_at=record.uploaded_at,
     )
+
+
+@router.get("/{file_id}", response_model=FileRecordRead)
+def get_file(file_id: str, db: Session = Depends(get_db)) -> FileRecordRead:
+    file_record = db.get(FileRecord, file_id)
+    if file_record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return file_record
+
+
+@router.get("/{file_id}/profile", response_model=FileProfileRead)
+def get_file_profile(file_id: str, db: Session = Depends(get_db)) -> FileProfileRead:
+    profile = db.query(FileProfile).filter(FileProfile.file_id == file_id).one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File profile not found")
+    return profile

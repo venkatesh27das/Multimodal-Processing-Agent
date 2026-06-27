@@ -24,7 +24,7 @@ Response:
 
 ### `POST /files/upload`
 
-Registers an uploaded file and stores it in local storage for the MVP.
+Registers an uploaded file, stores it in local storage, calculates a checksum, and creates a file profile.
 
 Request:
 
@@ -47,6 +47,14 @@ Response `201`:
   "uploaded_at": "2026-06-27T00:00:00"
 }
 ```
+
+### `GET /files/{file_id}`
+
+Returns the file registry record.
+
+### `GET /files/{file_id}/profile`
+
+Returns the generated file profile with modality, scanned/text-layer signals, likelihood placeholders, layout estimate, and recommended parsing strategy.
 
 ## Parse Jobs
 
