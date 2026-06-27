@@ -168,6 +168,71 @@ export type ParseRequest = {
   governance_constraints: Record<string, unknown>;
 };
 
+export type AuditEvent = {
+  id: string;
+  actor: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  event_metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ObservabilitySummary = {
+  jobs: {
+    total_jobs: number;
+    completed_jobs: number;
+    failed_jobs: number;
+    review_required_jobs: number;
+    success_rate: number;
+  };
+  fallback: { count: number; rate: number };
+  review: { count: number; rate: number };
+  latency: {
+    average_ms: number;
+    p50_ms: number;
+    p95_ms: number;
+    max_ms: number;
+  };
+  cost: {
+    estimated_cost: number;
+    currency: string;
+  };
+  error_logs: Array<{
+    execution_result_id: string | null;
+    job_id: string | null;
+    parser_id: string | null;
+    message: string;
+    created_at: string;
+  }>;
+};
+
+export type ParserUsageMetric = {
+  parser_id: string;
+  execution_count: number;
+  job_count: number;
+  success_count: number;
+  error_count: number;
+  fallback_asset_count: number;
+  average_confidence: number | null;
+  average_latency_ms: number | null;
+  estimated_cost: number;
+};
+
+export type QualityMetrics = {
+  average_quality: number | null;
+  passed: number;
+  review_required: number;
+  failed: number;
+  not_evaluated: number;
+  buckets: Array<{
+    label: string;
+    min_score: number;
+    max_score: number;
+    count: number;
+  }>;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -256,6 +321,18 @@ export const api = {
   },
   listSkills() {
     return request<Skill[]>("/skills");
+  },
+  getObservabilitySummary() {
+    return request<ObservabilitySummary>("/observability/summary");
+  },
+  getParserUsage() {
+    return request<ParserUsageMetric[]>("/observability/parser-usage");
+  },
+  getQualityMetrics() {
+    return request<QualityMetrics>("/observability/quality");
+  },
+  getAuditEvents(limit = 50) {
+    return request<{ events: AuditEvent[] }>(`/audit/events?limit=${limit}`);
   },
 };
 

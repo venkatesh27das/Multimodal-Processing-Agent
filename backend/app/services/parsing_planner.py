@@ -4,6 +4,7 @@ from backend.app.domain.enums import CostProfile, JobStatus, QualityTarget
 from backend.app.models.domain import FileProfile, FileRecord, ParseJob, ParsingPlan
 from backend.app.schemas.domain import ParserSelectionRequest, ParserSelectionResponse
 from backend.app.services.audit_logger import audit_logger
+from backend.app.services.governance import policy_checker
 from backend.app.services.parser_selector import parser_selector
 
 QUALITY_THRESHOLDS: dict[QualityTarget, float] = {
@@ -22,6 +23,23 @@ class ParsingPlanner:
         file_profile: FileProfile,
         request: ParserSelectionRequest,
     ) -> tuple[ParseJob, ParsingPlan, ParserSelectionResponse]:
+        governance_report = policy_checker.check(
+            file_record=file_record,
+            file_profile=file_profile,
+            governance_constraints=request.governance_constraints,
+        )
+        if not governance_report.allowed:
+            audit_logger.log(
+                db,
+                actor="system",
+                action="governance_policy_blocked",
+                entity_type="file_record",
+                entity_id=file_record.id,
+                metadata=governance_report.to_dict(),
+            )
+            db.flush()
+            raise ValueError("Governance policy blocked parsing for this document")
+
         selection = parser_selector.plan(
             db,
             file_profile=file_profile,
@@ -57,10 +75,19 @@ class ParsingPlanner:
             human_review_policy={
                 "create_review_item_below_threshold": True,
                 "quality_target": request.quality_target.value,
+                "governance": governance_report.to_dict(),
             },
             decision_reason=selection.decision_explanation,
         )
         db.add(plan)
+        audit_logger.log(
+            db,
+            actor="system",
+            action="governance_policy_checked",
+            entity_type="parse_job",
+            entity_id=job.id,
+            metadata=governance_report.to_dict(),
+        )
         audit_logger.log(
             db,
             actor="system",
@@ -77,4 +104,3 @@ class ParsingPlanner:
 
 
 parsing_planner = ParsingPlanner()
-
