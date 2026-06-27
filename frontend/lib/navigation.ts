@@ -2,9 +2,12 @@ import {
   Activity,
   Boxes,
   BriefcaseBusiness,
-  FileUp,
+  ClipboardCheck,
+  FileText,
+  Home,
   ListChecks,
   Network,
+  Settings,
   ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -13,14 +16,26 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  section?: "main" | "admin";
 };
 
 export const navigationItems: NavItem[] = [
-  { href: "/", label: "Home", icon: FileUp },
-  { href: "/jobs", label: "Jobs", icon: BriefcaseBusiness },
-  { href: "/parser-registry", label: "Parser Registry", icon: Network },
-  { href: "/skills-registry", label: "Skills Registry", icon: ShieldCheck },
-  { href: "/review-queue", label: "Review Queue", icon: ListChecks },
-  { href: "/assets", label: "Asset Viewer", icon: Boxes },
-  { href: "/observability", label: "Observability", icon: Activity },
+  { href: "/", label: "Home", icon: Home, section: "main" },
+  { href: "/parse", label: "Parse", icon: ClipboardCheck, section: "main" },
+  { href: "/jobs", label: "Jobs", icon: BriefcaseBusiness, section: "main" },
+  { href: "/review-queue", label: "Review Queue", icon: ListChecks, section: "main" },
+  { href: "/assets", label: "Assets", icon: Boxes, section: "main" },
+  { href: "/observability", label: "Observability", icon: Activity, section: "main" },
+  { href: "/parsers", label: "Parsers", icon: Network, section: "admin" },
+  { href: "/skills", label: "Skills", icon: ShieldCheck, section: "admin" },
+  { href: "/settings", label: "Settings", icon: Settings, section: "admin" },
 ];
+
+export function titleForPath(pathname: string) {
+  if (pathname === "/home") return "Home";
+  const active =
+    navigationItems.find((item) =>
+      item.href === "/" ? pathname === "/" || pathname === "/home" : pathname.startsWith(item.href),
+    ) ?? navigationItems[0];
+  return active.label;
+}

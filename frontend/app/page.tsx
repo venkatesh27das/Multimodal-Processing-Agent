@@ -1,203 +1,182 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, FileUp, Loader2, Send } from "lucide-react";
-import { api, getJobSummaries, ParseJobRunResponse, pct, shortId, type JobSummary } from "@/lib/api";
-import { Panel, PanelHeader } from "@/components/ui/panel";
-import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Gauge,
+  Network,
+  Play,
+  ShieldCheck,
+  Star,
+  TimerReset,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  ActionButton,
+  ArrowLink,
+  Card,
+  DataTable,
+  FileTypeIcon,
+  MetricCard,
+  SectionHeader,
+  Sparkline,
+  StatusPill,
+  Tag,
+} from "@/components/design-system";
+import { getHomeMetrics, getRecentJobs, type HomeMetrics, type RecentJobView } from "@/lib/enterprise-data";
 
-const contractOptions = [
-  { id: "parsed_text", label: "Parsed text" },
-  { id: "tables", label: "Tables" },
-  { id: "entities", label: "Entities" },
-  { id: "relationships", label: "Relationships" },
-  { id: "evidence_spans", label: "Evidence spans" },
-];
+const spark = [12, 18, 16, 22, 20, 25, 23, 27, 26];
 
 export default function HomePage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [contract, setContract] = useState<string[]>(["parsed_text", "tables", "entities"]);
-  const [qualityTarget, setQualityTarget] = useState<"low" | "balanced" | "high">("balanced");
-  const [costProfile, setCostProfile] = useState<"low_cost" | "balanced" | "premium">("balanced");
-  const [latencyProfile, setLatencyProfile] = useState<"batch" | "interactive" | "real_time">("interactive");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ParseJobRunResponse | null>(null);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [metrics, setMetrics] = useState<HomeMetrics>({
+    jobsToday: 128,
+    successRate: 0.926,
+    reviewRequired: 23,
+    avgQuality: 0.87,
+  });
+  const [jobs, setJobs] = useState<RecentJobView[]>([]);
 
   useEffect(() => {
-    getJobSummaries().then(setJobs).catch(() => setJobs([]));
+    getHomeMetrics().then(setMetrics);
+    getRecentJobs().then(setJobs);
   }, []);
 
-  const outputContract = useMemo(
-    () => Object.fromEntries(contractOptions.map((item) => [item.id, contract.includes(item.id)])),
-    [contract],
-  );
-
-  async function submitJob(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!file) {
-      setError("Choose a file before submitting a parsing job.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    setResult(null);
-    try {
-      const uploaded = await api.uploadFile(file);
-      const created = await api.runJob({
-        file_id: uploaded.file_id,
-        requested_output_contract: outputContract,
-        quality_target: qualityTarget,
-        cost_profile: costProfile,
-        latency_profile: latencyProfile,
-        governance_constraints: {},
-      });
-      setResult(created);
-      setJobs(await getJobSummaries().catch(() => []));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to submit parsing job.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function toggleContract(id: string) {
-    setContract((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-    );
-  }
-
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
-      <Panel>
-        <PanelHeader title="Upload and Parse" />
-        <form className="space-y-5 p-4" onSubmit={submitJob}>
-          <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border bg-surface px-4 py-6 text-center transition hover:border-accent hover:bg-accent-soft">
-            <FileUp className="h-8 w-8 text-accent" aria-hidden="true" />
-            <span className="mt-3 text-sm font-semibold text-ink">
-              {file ? file.name : "Choose a document, image, audio, or video file"}
-            </span>
-            <span className="mt-1 text-xs text-muted">Local storage intake with checksum and profiling</span>
-            <input className="sr-only" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          </label>
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <MetricCard icon={FileText} label="Jobs Today" value={String(metrics.jobsToday)} delta="↑ 18% vs yesterday" tone="accent" data={spark} />
+        <MetricCard icon={CheckCircle2} label="Success Rate" value={`${Math.round(metrics.successRate * 1000) / 10}%`} delta="↑ 4.3% vs yesterday" tone="success" data={[8, 11, 14, 10, 16, 9, 13, 12, 15]} />
+        <MetricCard icon={AlertTriangle} label="Review Required" value={String(metrics.reviewRequired)} delta="↓ 8 vs yesterday" tone="warning" data={[7, 9, 8, 11, 9, 10, 11, 10, 12]} />
+        <MetricCard icon={Star} label="Avg Quality" value={`${Math.round(metrics.avgQuality * 100)}%`} delta="↑ 2.1% vs yesterday" tone="info" data={[6, 7, 6, 9, 7, 8, 10, 9, 11]} />
+      </div>
 
-          <div>
-            <p className="text-xs font-semibold uppercase text-muted">Output contract</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {contractOptions.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-ink"
-                >
-                  <input
-                    checked={contract.includes(item.id)}
-                    className="h-4 w-4 accent-accent"
-                    type="checkbox"
-                    onChange={() => toggleContract(item.id)}
-                  />
-                  {item.label}
-                </label>
-              ))}
-            </div>
+      <div className="grid gap-4 2xl:grid-cols-[1.1fr_1.1fr_0.9fr]">
+        <Card className="border-accent/50 p-5">
+          <SectionHeader title="Start Parsing" description="Upload any document, image, audio, or video to extract structured insights." />
+          <Link href="/parse" className="mt-5 flex min-h-[158px] flex-col items-center justify-center rounded-lg border border-dashed border-accent/50 bg-orange-50/40 p-5 text-center">
+            <FileText className="h-8 w-8 text-accent" aria-hidden="true" />
+            <p className="mt-3 text-sm font-bold text-ink">Drag & drop files here</p>
+            <p className="mt-1 text-xs text-muted">or click to browse</p>
+            <p className="mt-3 text-xs text-muted">Supports PDF, DOCX, TXT, PNG, JPG, MP3, MP4 and more</p>
+          </Link>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <Link href="/parse">
+              <ActionButton className="w-full" icon={Play}>Start Parsing</ActionButton>
+            </Link>
+            <ActionButton className="w-full" variant="secondary">Use Template</ActionButton>
           </div>
+        </Card>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <Select label="Quality target" value={qualityTarget} onChange={setQualityTarget} options={["low", "balanced", "high"]} />
-            <Select label="Cost profile" value={costProfile} onChange={setCostProfile} options={["low_cost", "balanced", "premium"]} />
-            <Select label="Latency profile" value={latencyProfile} onChange={setLatencyProfile} options={["batch", "interactive", "real_time"]} />
+        <Card className="p-5">
+          <SectionHeader title="Quick Templates" description="Jumpstart common parsing workflows." />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              { title: "General Parsing", description: "Extract text, tables, entities", icon: FileText, className: "bg-accent-soft text-accent" },
+              { title: "Invoice Extraction", description: "Invoices, receipts, bills", icon: ShieldCheck, className: "bg-success-soft text-success" },
+              { title: "Contract Parsing", description: "Contracts and agreements", icon: FileText, className: "bg-info-soft text-info" },
+              { title: "Research Paper", description: "Papers, journals, articles", icon: FileText, className: "bg-purple-soft text-purple" },
+              { title: "Audio/Video Transcript", description: "Transcribe and summarize", icon: Gauge, className: "bg-info-soft text-info" },
+              { title: "Graph-ready Extraction", description: "Entities and relationships", icon: Network, className: "bg-warning-soft text-warning" },
+            ].map(({ title, description, icon: Icon, className }) => (
+              <button key={String(title)} className="flex items-center justify-between rounded-lg border border-border bg-white p-3 text-left hover:bg-surface" type="button">
+                <span className="flex items-center gap-3">
+                  <span className={`grid h-9 w-9 place-items-center rounded-lg ${className}`}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-bold text-ink">{title}</span>
+                    <span className="block text-xs text-muted">{description}</span>
+                  </span>
+                </span>
+                <span className="text-lg text-muted">›</span>
+              </button>
+            ))}
           </div>
+        </Card>
 
-          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-          {result ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              <div className="flex items-center gap-2 font-medium">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Job created with {result.plan.selected_parser_id}
+        <Card className="p-5">
+          <SectionHeader title="Needs Attention" action={<span className="rounded-full bg-danger-soft px-2 py-1 text-xs font-bold text-danger">3</span>} />
+          <div className="mt-4 space-y-3">
+            {[
+              { title: "Pending Review", description: "Human-in-the-loop items", count: "23", icon: AlertTriangle, className: "bg-warning-soft text-warning" },
+              { title: "Failed Jobs", description: "Jobs that need attention", count: "7", icon: AlertTriangle, className: "bg-danger-soft text-danger" },
+              { title: "Parser Health", description: "Degraded or unhealthy parsers", count: "2", icon: TimerReset, className: "bg-warning-soft text-warning" },
+            ].map(({ title, description, count, icon: Icon, className }) => (
+              <div key={String(title)} className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="flex items-center gap-3">
+                  <span className={`grid h-10 w-10 place-items-center rounded-lg ${className}`}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-ink">{title}</p>
+                    <p className="text-xs text-muted">{description}</p>
+                  </div>
+                </div>
+                <span className="text-xl font-bold text-ink">{count}</span>
               </div>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                <Link className="font-semibold text-emerald-900 underline" href={`/jobs/${result.job.id}`}>
-                  Open job {shortId(result.job.id)}
-                </Link>
-                {result.assets[0] ? (
-                  <Link className="font-semibold text-emerald-900 underline" href={`/assets/${result.assets[0].asset_id}`}>
-                    Open asset {shortId(result.assets[0].asset_id)}
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+            ))}
+          </div>
+        </Card>
+      </div>
 
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-white shadow-panel transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={submitting}
-            type="submit"
-          >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-            Submit parsing job
-          </button>
-        </form>
-      </Panel>
-
-      <Panel>
-        <PanelHeader title="Recent Jobs" action={<Link className="text-xs font-semibold text-accent-strong" href="/jobs">View all</Link>} />
-        <div className="overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface text-xs uppercase text-muted">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Job</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Quality</th>
+      <div className="grid gap-4 2xl:grid-cols-[1fr_380px]">
+        <Card>
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <SectionHeader title="Recent Jobs" />
+            <Link href="/jobs"><ArrowLink>View all jobs</ArrowLink></Link>
+          </div>
+          <DataTable columns={["Job / File", "Parser", "Status", "Quality", "Last Updated", "Actions"]} minWidth="860px">
+            {jobs.map((job) => (
+              <tr key={job.id} className="hover:bg-surface">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <FileTypeIcon type={job.meta} />
+                    <div>
+                      <p className="font-bold text-ink">{job.name}</p>
+                      <p className="text-xs text-muted">{job.meta}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-muted">{job.parser}</td>
+                <td className="px-4 py-3"><StatusPill status={job.status === "completed" ? "completed" : job.status === "review" ? "review" : job.status === "failed" ? "failed" : "queued"}>{job.status === "review" ? "Review Required" : job.status}</StatusPill></td>
+                <td className="px-4 py-3 font-semibold text-ink">{job.quality}</td>
+                <td className="px-4 py-3 text-muted">{job.updated}</td>
+                <td className="px-4 py-3"><Link className="font-bold text-accent" href="/jobs">View</Link></td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {jobs.slice(0, 6).map(({ job, quality }) => (
-                <tr key={job.id} className="hover:bg-surface">
-                  <td className="px-4 py-3">
-                    <Link className="font-medium text-ink hover:text-accent-strong" href={`/jobs/${job.id}`}>
-                      {shortId(job.id)}
-                    </Link>
-                    <div className="text-xs text-muted">{job.parser_id ?? "Planning"}</div>
-                  </td>
-                  <td className="px-4 py-3"><StatusBadge value={job.status} /></td>
-                  <td className="px-4 py-3 text-muted">{pct(quality?.extraction_confidence)}</td>
-                </tr>
-              ))}
-              {!jobs.length ? (
-                <tr><td className="px-4 py-8 text-sm text-muted" colSpan={3}>No jobs yet. Upload a file to begin.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-    </div>
-  );
-}
+            ))}
+          </DataTable>
+        </Card>
 
-function Select<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: T[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase text-muted">{label}</span>
-      <select
-        className="mt-2 h-9 w-full rounded-md border border-border bg-white px-3 text-sm text-ink outline-none focus:border-accent"
-        value={value}
-        onChange={(event) => onChange(event.target.value as T)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>{option.replaceAll("_", " ")}</option>
-        ))}
-      </select>
-    </label>
+        <Card className="p-5">
+          <SectionHeader title="System Insights" action={<span className="text-xs text-muted">Last 7 days</span>} />
+          <div className="mt-5 grid grid-cols-[1fr_1px_1fr] gap-5">
+            <div>
+              <p className="text-xs font-bold text-muted">Throughput</p>
+              <p className="mt-3 text-2xl font-bold text-ink">1,248</p>
+              <p className="text-xs text-muted">jobs processed</p>
+              <div className="mt-4"><Sparkline data={[12, 16, 15, 18, 20, 18, 17, 21, 24]} tone="info" /></div>
+            </div>
+            <div className="bg-border" />
+            <div>
+              <p className="text-xs font-bold text-muted">Top File Types</p>
+              <div className="mt-4 space-y-2">
+                {["PDF 45%", "DOCX 24%", "PNG/JPG 15%", "XLSX 8%", "Other 8%"].map((item, index) => (
+                  <div key={item} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 text-ink"><span className={`h-2 w-2 rounded-full ${index === 0 ? "bg-accent" : index === 1 ? "bg-success" : index === 2 ? "bg-info" : index === 3 ? "bg-purple" : "bg-slate-400"}`} />{item.split(" ")[0]}</span>
+                    <span className="font-semibold text-muted">{item.split(" ")[1]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-5 rounded-lg border border-emerald-200 bg-success-soft p-3 text-sm text-emerald-800">
+            <span className="font-bold">System recommendations enabled</span>
+            <p className="text-xs">We are optimizing quality and latency automatically.</p>
+          </div>
+        </Card>
+      </div>
+    </div>
   );
 }
