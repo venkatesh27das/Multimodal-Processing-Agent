@@ -1,5 +1,6 @@
 import re
 
+from backend.app.core.config import settings
 from backend.app.models.domain import (
     AuditEvent,
     FileRecord,
@@ -36,6 +37,11 @@ class ChunkingService:
 
 class MockEmbeddingService:
     def embed_chunks(self, chunks: list[dict[str, object]]) -> list[dict[str, object]]:
+        if settings.lm_studio_embedding_enabled and chunks:
+            embeddings = self._embed_with_lm_studio(chunks)
+            if embeddings:
+                return embeddings
+
         embeddings: list[dict[str, object]] = []
         for chunk in chunks:
             text = str(chunk.get("text", ""))
@@ -47,6 +53,43 @@ class MockEmbeddingService:
                 }
             )
         return embeddings
+
+    def _embed_with_lm_studio(
+        self, chunks: list[dict[str, object]]
+    ) -> list[dict[str, object]] | None:
+        try:
+            import httpx
+
+            texts = [str(chunk.get("text", "")) for chunk in chunks]
+            response = httpx.post(
+                f"{settings.lm_studio_base_url.rstrip('/')}/embeddings",
+                json={"model": settings.lm_studio_embedding_model, "input": texts},
+                timeout=settings.lm_studio_timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(rows, list):
+                return None
+
+            embeddings: list[dict[str, object]] = []
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    continue
+                vector = row.get("embedding")
+                if not isinstance(vector, list):
+                    continue
+                chunk = chunks[index]
+                embeddings.append(
+                    {
+                        "chunk_id": chunk["chunk_id"],
+                        "model": settings.lm_studio_embedding_model,
+                        "vector": vector,
+                    }
+                )
+            return embeddings or None
+        except Exception:
+            return None
 
 
 class EntityExtractor:

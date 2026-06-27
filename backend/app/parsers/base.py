@@ -31,6 +31,11 @@ class ParseResult(BaseModel):
     parser_id: str
     parsed_text: str | None = None
     structured_data: dict[str, object] = Field(default_factory=dict)
+    layout_blocks: list[dict[str, object]] = Field(default_factory=list)
+    tables: list[dict[str, object]] = Field(default_factory=list)
+    image_descriptions: list[dict[str, object]] = Field(default_factory=list)
+    audio_transcript: str | None = None
+    video_transcript: str | None = None
     confidence_score: float = Field(ge=0, le=1)
     warnings: list[str] = Field(default_factory=list)
 
@@ -60,7 +65,17 @@ class BaseParser(ABC):
 
         return ""
 
+    def _read_text(self, request: ParseRequest) -> str:
+        if request.content:
+            return request.content.decode("utf-8", errors="ignore")
+
+        if request.storage_path:
+            path = Path(request.storage_path)
+            if path.exists() and path.is_file():
+                return path.read_text(encoding="utf-8", errors="ignore")
+
+        return ""
+
     @abstractmethod
     def parse(self, request: ParseRequest) -> ParseResult:
         """Parse a file into a lightweight result payload."""
-

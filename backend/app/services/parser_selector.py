@@ -99,7 +99,13 @@ class ParserSelector:
         scored.sort(key=lambda item: item.breakdown.total_score, reverse=True)
 
         primary = self._choose_primary(file_profile, scored, quality_target)
-        fallback = self._choose_fallback(db, primary.parser, scored, file_profile)
+        fallback = self._choose_fallback(
+            db,
+            primary.parser,
+            scored,
+            file_profile,
+            governance_constraints,
+        )
         secondary = self._choose_secondary(primary.parser, fallback, scored)
         skill_id = self._infer_skill(db, file_profile, requested_output_contract)
 
@@ -270,15 +276,24 @@ class ParserSelector:
         primary: ParserDefinition,
         scored: list[ScoredParser],
         file_profile: FileProfile,
+        governance_constraints: dict[str, object],
     ) -> ParserDefinition | None:
-        scored_by_id = {item.parser.parser_id: item.parser for item in scored}
+        scored_by_id = {
+            item.parser.parser_id: item.parser
+            for item in scored
+            if self._fallback_allowed(item.parser, governance_constraints)
+        }
         preferred_id = FALLBACK_BY_PRIMARY.get(primary.parser_id)
         if preferred_id and preferred_id in scored_by_id:
             return scored_by_id[preferred_id]
 
         if preferred_id:
             preferred = db.get(ParserDefinition, preferred_id)
-            if preferred is not None and preferred.enabled:
+            if (
+                preferred is not None
+                and preferred.enabled
+                and self._fallback_allowed(preferred, governance_constraints)
+            ):
                 return preferred
 
         if (
@@ -286,13 +301,28 @@ class ParserSelector:
             and primary.parser_id == "pdf_native_text"
         ):
             fallback = db.get(ParserDefinition, "azure_document_intelligence")
-            if fallback is not None and fallback.enabled:
+            if (
+                fallback is not None
+                and fallback.enabled
+                and self._fallback_allowed(fallback, governance_constraints)
+            ):
                 return fallback
 
         for item in scored:
-            if item.parser.parser_id != primary.parser_id:
+            if item.parser.parser_id != primary.parser_id and self._fallback_allowed(
+                item.parser, governance_constraints
+            ):
                 return item.parser
         return None
+
+    def _fallback_allowed(
+        self,
+        parser: ParserDefinition,
+        governance_constraints: dict[str, object],
+    ) -> bool:
+        if governance_constraints.get("external_services_allowed") is False:
+            return parser.deployment_mode != "external"
+        return True
 
     def _choose_secondary(
         self,

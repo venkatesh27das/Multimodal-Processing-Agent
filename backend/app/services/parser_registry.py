@@ -20,30 +20,30 @@ PARSER_DESCRIPTORS: dict[str, dict[str, object]] = {
     "pdf_native_text": {
         "parser_type": ParserType.DETERMINISTIC,
         "deployment_mode": DeploymentMode.LOCAL,
-        "quality_level": "medium",
-        "strengths": ["Fast deterministic extraction for PDFs with text layers"],
-        "weaknesses": ["Poor fit for scanned or image-heavy PDFs"],
+        "quality_level": "high",
+        "strengths": ["Fast local extraction for PDFs with native text layers via PyMuPDF"],
+        "weaknesses": ["Poor fit for scanned PDFs without OCR/VLM fallback"],
     },
     "docx_text": {
         "parser_type": ParserType.DETERMINISTIC,
         "deployment_mode": DeploymentMode.LOCAL,
-        "quality_level": "medium",
-        "strengths": ["Structured document text extraction"],
-        "weaknesses": ["Complex embedded media support pending"],
+        "quality_level": "high",
+        "strengths": ["Local DOCX paragraph and table extraction via python-docx"],
+        "weaknesses": ["Legacy .doc and complex embedded media support pending"],
     },
     "html_text": {
         "parser_type": ParserType.DETERMINISTIC,
         "deployment_mode": DeploymentMode.LOCAL,
-        "quality_level": "medium",
-        "strengths": ["Fast HTML text extraction"],
-        "weaknesses": ["Readability and boilerplate removal are not wired yet"],
+        "quality_level": "high",
+        "strengths": ["Local clean text, table, and image metadata extraction via BeautifulSoup"],
+        "weaknesses": ["Advanced readability and boilerplate scoring are not wired yet"],
     },
     "image_ocr": {
         "parser_type": ParserType.OCR,
         "deployment_mode": DeploymentMode.LOCAL,
-        "quality_level": "placeholder",
-        "strengths": ["Basic image OCR placeholder"],
-        "weaknesses": ["No real OCR engine configured yet"],
+        "quality_level": "medium",
+        "strengths": ["Local image OCR via pytesseract when Tesseract is installed"],
+        "weaknesses": ["Requires the system tesseract binary for real OCR"],
     },
     "audio_transcription": {
         "parser_type": ParserType.SPEECH,
@@ -70,15 +70,15 @@ PARSER_DESCRIPTORS: dict[str, dict[str, object]] = {
         "parser_type": ParserType.OCR,
         "deployment_mode": DeploymentMode.LOCAL,
         "quality_level": "medium",
-        "strengths": ["Local OCR adapter placeholder"],
-        "weaknesses": ["Requires system tesseract binary for real execution"],
+        "strengths": ["Local OCR for images and rendered PDF pages"],
+        "weaknesses": ["Requires PyMuPDF for PDF rendering and Tesseract for OCR"],
     },
     "mock_vlm": {
         "parser_type": ParserType.VLM,
-        "deployment_mode": DeploymentMode.EXTERNAL,
-        "quality_level": "placeholder",
-        "strengths": ["Placeholder for multimodal reasoning workflows"],
-        "weaknesses": ["No real model call implemented yet"],
+        "deployment_mode": DeploymentMode.LOCAL,
+        "quality_level": "medium",
+        "strengths": ["Calls a local LM Studio OpenAI-compatible VLM endpoint"],
+        "weaknesses": ["Requires LM Studio VLM server and image-capable model"],
     },
 }
 
@@ -178,4 +178,3 @@ class ParserRegistry:
 
 
 parser_registry = ParserRegistry()
-

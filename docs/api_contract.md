@@ -220,65 +220,6 @@ Response:
 
 Returns registered parser definitions.
 
-## Observability
-
-### `GET /observability/summary`
-
-Returns job, fallback, review, latency, cost, and error-log metrics.
-
-Response:
-
-```json
-{
-  "jobs": {
-    "total_jobs": 1,
-    "completed_jobs": 1,
-    "failed_jobs": 0,
-    "review_required_jobs": 0,
-    "success_rate": 1
-  },
-  "fallback": {"count": 0, "rate": 0},
-  "review": {"count": 0, "rate": 0},
-  "latency": {"average_ms": 10, "p50_ms": 10, "p95_ms": 10, "max_ms": 10},
-  "cost": {"estimated_cost": 0, "currency": "USD"},
-  "error_logs": []
-}
-```
-
-### `GET /observability/parser-usage`
-
-Returns parser execution counts, success/error counts, fallback asset counts, average confidence, latency, and estimated cost by parser.
-
-### `GET /observability/quality`
-
-Returns quality status counts and low/medium/high score buckets.
-
-## Audit
-
-### `GET /audit/events`
-
-Returns recent audit events in reverse chronological order.
-
-Query parameters:
-
-- `limit`: integer from 1 to 250, default 50.
-
-## Known Error Responses
-
-- `400`: empty upload or malformed request.
-- `404`: missing file, profile, job, plan, quality report, or asset.
-- `409`: no parser candidate available or governance policy blocks processing.
-- `413`: upload exceeds `MAX_UPLOAD_BYTES`.
-- `422`: request validation failed.
-- `500`: unexpected server error.
-
-## Known Limitations
-
-- Parsing runs synchronously.
-- Several parser adapters are mock implementations.
-- Governance detectors are placeholders.
-- Review queue actions are not persisted yet.
-
 Response:
 
 ```json
@@ -289,17 +230,28 @@ Response:
     "parser_type": "deterministic",
     "supported_file_types": ["pdf"],
     "supported_modalities": ["document", "text"],
-    "strengths": ["Fast deterministic extraction for PDFs with text layers"],
-    "weaknesses": ["Poor fit for scanned or image-heavy PDFs"],
+    "strengths": ["Fast local extraction for PDFs with native text layers via PyMuPDF"],
+    "weaknesses": ["Poor fit for scanned PDFs without OCR/VLM fallback"],
     "cost_level": "low",
     "latency_level": "low",
-    "quality_level": "medium",
+    "quality_level": "high",
     "deployment_mode": "local",
     "enabled": true,
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "expected_quality": 0.78
   }
 ]
 ```
+
+Local parser support:
+
+- `pdf_native_text`: PyMuPDF native PDF text/layout extraction.
+- `docx_text`: python-docx paragraph and table extraction.
+- `html_text`: BeautifulSoup text, table, and image metadata extraction.
+- `image_ocr`: Pillow plus pytesseract image OCR.
+- `tesseract_ocr`: Tesseract OCR for images and rendered PDF pages.
+- `mock_vlm`: compatibility id for the LM Studio local VLM adapter.
+- `azure_document_intelligence`, `audio_transcription`, and `video_parser` are still placeholder adapters.
 
 ### `GET /parser-registry/{parser_id}`
 
@@ -400,3 +352,66 @@ Response:
   "validation_errors": []
 }
 ```
+
+## Observability
+
+### `GET /observability/summary`
+
+Returns job, fallback, review, latency, cost, and error-log metrics.
+
+Response:
+
+```json
+{
+  "jobs": {
+    "total_jobs": 1,
+    "completed_jobs": 1,
+    "failed_jobs": 0,
+    "review_required_jobs": 0,
+    "success_rate": 1
+  },
+  "fallback": {"count": 0, "rate": 0},
+  "review": {"count": 0, "rate": 0},
+  "latency": {"average_ms": 10, "p50_ms": 10, "p95_ms": 10, "max_ms": 10},
+  "cost": {"estimated_cost": 0, "currency": "USD"},
+  "error_logs": []
+}
+```
+
+### `GET /observability/parser-usage`
+
+Returns parser execution counts, success/error counts, fallback asset counts,
+average confidence, latency, and estimated cost by parser.
+
+### `GET /observability/quality`
+
+Returns quality status counts and low/medium/high score buckets.
+
+## Audit
+
+### `GET /audit/events`
+
+Returns recent audit events in reverse chronological order.
+
+Query parameters:
+
+- `limit`: integer from 1 to 250, default 50.
+
+## Known Error Responses
+
+- `400`: empty upload or malformed request.
+- `404`: missing file, profile, job, plan, quality report, parser, skill, or asset.
+- `409`: no parser candidate available or governance policy blocks processing.
+- `413`: upload exceeds `MAX_UPLOAD_BYTES`.
+- `422`: request validation failed.
+- `500`: unexpected server error.
+
+## Known Limitations
+
+- Parsing runs synchronously.
+- Azure Document Intelligence, speech, and video adapters are placeholders.
+- Legacy `.doc` files require conversion to DOCX/PDF before upload.
+- OCR depends on local Tesseract and image quality.
+- LM Studio VLM parsing depends on an image-capable local model.
+- Governance detectors are placeholders.
+- Review queue actions are not persisted yet.

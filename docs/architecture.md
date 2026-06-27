@@ -10,7 +10,7 @@ The Multimodal Parsing Agent coordinates governed file intake, parser selection,
 - `schemas`: Pydantic API contracts, kept separate from SQLAlchemy models.
 - `models`: SQLAlchemy persistence models for files, profiles, parsers, skills, jobs, plans, executions, quality, assets, review items, and audit events.
 - `services`: File storage/profiling, parser registry, selector, planner, execution engine, fallback manager, quality evaluator, asset publisher, skills framework, governance, audit, and observability.
-- `parsers`: Base parser contract plus deterministic/mock parser implementations.
+- `parsers`: Base parser contract plus local PDF/DOCX/HTML/OCR/VLM parser implementations.
 - `skills`: Folder-based skill definitions with `SKILL.md`, `schema.json`, `validation_rules.yaml`, and examples.
 
 ## Flow
@@ -62,6 +62,23 @@ Observability aggregates persisted state:
 - parser execution errors
 - audit events
 
+## Local Parsing Runtime
+
+The MVP favors local, Mac-friendly parsing paths before managed cloud services:
+
+- `PdfNativeParser` uses PyMuPDF to extract text and layout blocks from digital PDFs.
+- `DocxParser` uses python-docx to extract paragraphs and tables.
+- `HtmlParser` uses BeautifulSoup to extract clean text, tables, and image metadata.
+- `ImageOcrParser` and `TesseractAdapter` use Pillow plus pytesseract when the system
+  `tesseract` binary is installed.
+- `MockVlmParser` keeps its historical parser id for compatibility, but now acts as an
+  LM Studio VLM adapter when `LM_STUDIO_ENABLED=true`.
+- `MockEmbeddingService` can call LM Studio embeddings with `LM_STUDIO_EMBEDDING_ENABLED=true`,
+  then falls back to deterministic mock vectors if the endpoint is unavailable.
+
+Azure Document Intelligence remains in the registry as a managed-service adapter, but local
+governance constraints can force selection toward OCR/VLM paths that do not require cloud access.
+
 ## Frontend
 
 The frontend is a compact enterprise SaaS console built with Next.js App Router, TypeScript, Tailwind CSS, and lucide icons.
@@ -91,7 +108,7 @@ Docker Compose uses PostgreSQL and a named storage volume.
 - Alembic migrations
 - async worker queue
 - durable object storage
-- real OCR/VLM/speech adapter credentials
+- production OCR/VLM/speech adapters and model lifecycle management
 - authentication and authorization
 - tenant isolation
 - persisted human review decisions

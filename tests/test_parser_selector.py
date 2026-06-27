@@ -198,6 +198,29 @@ def test_governance_constraints_penalize_external_services() -> None:
     assert decision.primary_parser_id == "tesseract_ocr"
 
 
+def test_local_only_pdf_plan_uses_local_fallback() -> None:
+    db = make_session()
+    profile = make_profile(
+        file_type=FileType.PDF,
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+
+    decision = parser_selector.plan(
+        db,
+        file_profile=profile,
+        requested_output_contract={},
+        quality_target=QualityTarget.BALANCED,
+        cost_profile=CostProfile.BALANCED,
+        latency_profile=LatencyProfile.INTERACTIVE,
+        governance_constraints={"external_services_allowed": False},
+    )
+
+    assert decision.primary_parser_id == "pdf_native_text"
+    assert decision.fallback_parser_id in {"tesseract_ocr", "mock_vlm"}
+
+
 def test_jobs_plan_api_returns_parser_selection() -> None:
     from fastapi.testclient import TestClient
 
@@ -252,4 +275,3 @@ def test_jobs_plan_api_returns_parser_selection() -> None:
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()
-

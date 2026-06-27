@@ -53,6 +53,39 @@ curl -X POST http://localhost:8000/api/v1/jobs \
   }'
 ```
 
+## Force Local-Only Parser Selection
+
+Use this when the user has no cloud access and you want the selector to avoid managed
+services such as Azure Document Intelligence.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_id": "{file_id}",
+    "requested_output_contract": {"parsed_text": true, "tables": true},
+    "quality_target": "high",
+    "cost_profile": "balanced",
+    "latency_profile": "interactive",
+    "governance_constraints": {"external_services_allowed": false}
+  }'
+```
+
+## LM Studio Local VLM
+
+Set these values in `.env`, restart the backend, and upload an image or scanned PDF:
+
+```env
+LM_STUDIO_ENABLED=true
+LM_STUDIO_BASE_URL="http://localhost:1234/v1"
+LM_STUDIO_VLM_MODEL="google/gemma-4-12b"
+LM_STUDIO_EMBEDDING_ENABLED=true
+LM_STUDIO_EMBEDDING_MODEL="text-embedding-nomic-embed-text-v1.5"
+```
+
+The VLM adapter uses the existing parser id `mock_vlm` for compatibility. When enabled,
+it sends image data to `/chat/completions`; embeddings use `/embeddings`.
+
 ## Assets
 
 ```bash

@@ -24,6 +24,12 @@ services:
       STORAGE_DIR: /app/storage
       LOG_LEVEL: INFO
       CORS_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000"]'
+      TESSERACT_CMD: /usr/bin/tesseract
+      LM_STUDIO_ENABLED: ${LM_STUDIO_ENABLED:-false}
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      LM_STUDIO_VLM_MODEL: ${LM_STUDIO_VLM_MODEL:-google/gemma-4-12b}
+      LM_STUDIO_EMBEDDING_ENABLED: ${LM_STUDIO_EMBEDDING_ENABLED:-false}
+      LM_STUDIO_EMBEDDING_MODEL: ${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
     ports:
       - "8000:8000"
     volumes:
