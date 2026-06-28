@@ -16,10 +16,16 @@ from backend.app.schemas.domain import (
     ParsingPlanRead,
     QualityReportRead,
     ReviewItemRead,
+    SkillDefinitionCreate,
     SkillDefinitionRead,
+    SkillDefinitionUpdate,
+    SkillDuplicateRequest,
+    SkillImportResponse,
     SkillRead,
     SkillTestRequest,
     SkillTestResponse,
+    SkillWorkflowAttachmentRequest,
+    SkillWorkflowAttachmentResponse,
 )
 
 __all__ = [
@@ -38,8 +44,14 @@ __all__ = [
     "ParsingPlanRead",
     "QualityReportRead",
     "ReviewItemRead",
+    "SkillDefinitionCreate",
     "SkillDefinitionRead",
+    "SkillDefinitionUpdate",
+    "SkillDuplicateRequest",
+    "SkillImportResponse",
     "SkillRead",
     "SkillTestRequest",
     "SkillTestResponse",
+    "SkillWorkflowAttachmentRequest",
+    "SkillWorkflowAttachmentResponse",
 ]

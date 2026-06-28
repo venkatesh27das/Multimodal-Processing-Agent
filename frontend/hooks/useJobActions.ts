@@ -13,6 +13,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [exportUnsupported, setExportUnsupported] = useState(false);
 
   function clearToast() {
     setToast(null);
@@ -39,11 +40,17 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
   }
 
   async function exportJobs() {
+    if (exportUnsupported) {
+      setToast({ tone: "warning", message: "Export endpoint is not available yet." });
+      return;
+    }
+
     setBusyAction("export");
     setToast(null);
     try {
       const response = await jobsApi.exportJobs();
       if (!response.ok) {
+        if (response.status === 404 || response.status === 405) setExportUnsupported(true);
         setToast({ tone: "warning", message: "Export endpoint is not available yet." });
         return;
       }
@@ -51,10 +58,10 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "jobs-export";
+      anchor.download = "runs-export";
       anchor.click();
       URL.revokeObjectURL(url);
-      setToast({ tone: "success", message: "Jobs export downloaded." });
+      setToast({ tone: "success", message: "Runs export downloaded." });
     } catch (err) {
       setToast({
         tone: "error",
@@ -76,7 +83,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
       } else {
         setToast({
           tone: "error",
-          message: err instanceof Error ? err.message : "Job action failed.",
+          message: err instanceof Error ? err.message : "Run action failed.",
         });
       }
     } finally {
@@ -87,6 +94,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
   return {
     toast,
     busyAction,
+    exportUnsupported,
     clearToast,
     viewJob,
     retryJob,

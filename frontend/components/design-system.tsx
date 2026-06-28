@@ -123,7 +123,7 @@ export function MetricCard({
     <Card className="flex min-h-[92px] items-center justify-between gap-4 p-4">
       <div className="flex items-center gap-4">
         <div className={clsx("grid h-12 w-12 place-items-center rounded-xl", toneClasses[tone])}>
-          <Icon className="h-6 w-6" aria-hidden="true" />
+          {Icon ? <Icon className="h-6 w-6" aria-hidden="true" /> : null}
         </div>
         <div>
           <p className="text-xs font-bold text-muted">{label}</p>

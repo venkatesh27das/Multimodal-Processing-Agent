@@ -145,11 +145,11 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
       );
       setEvents(buildInitialEvents(responses));
       setStep("running");
-      setToast({ tone: "success", message: "Parsing job created successfully." });
+      setToast({ tone: "success", message: "Parsing run created successfully." });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to create parsing job.";
+      const message = error instanceof Error ? error.message : "Unable to create parsing run.";
       setJobError(message);
-      setToast({ tone: "danger", message: `Job creation failed: ${message}` });
+      setToast({ tone: "danger", message: `Run creation failed: ${message}` });
     } finally {
       setCreatingJob(false);
     }

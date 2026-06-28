@@ -4,7 +4,7 @@ type Metric = {
 };
 
 const metrics: Metric[] = [
-  { label: "Queued jobs", value: "0" },
+  { label: "Queued runs", value: "0" },
   { label: "Parsers online", value: "2" },
   { label: "Review items", value: "0" },
   { label: "Avg quality", value: "--" },
@@ -25,4 +25,3 @@ export function MetricStrip() {
     </section>
   );
 }
-

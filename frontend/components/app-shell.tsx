@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-4">
               <div className="hidden h-10 w-[360px] items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel xl:flex">
                 <Search className="h-4 w-4" aria-hidden="true" />
-                <span className="flex-1">Search files, jobs, parsers...</span>
+                <span className="flex-1">Search files, runs, parsers...</span>
                 <kbd className="rounded-md bg-surface px-2 py-0.5 text-xs font-semibold text-muted">⌘ K</kbd>
               </div>
               <button

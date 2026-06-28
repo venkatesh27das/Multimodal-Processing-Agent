@@ -112,7 +112,7 @@ function jobSummaryToView({ job, quality, assets }: JobSummary): RecentJobView {
           : "queued";
   return {
     id: job.id,
-    name: `Parse ${shortId(job.file_id)}`,
+    name: `Run ${shortId(job.file_id)}`,
     meta: `${shortId(job.file_id)} • ${asset?.document_metadata?.["file_type"] ?? "file"}`,
     parser: job.parser_id ?? asset?.parser_used ?? "Planning",
     status,

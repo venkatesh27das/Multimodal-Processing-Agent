@@ -21,8 +21,8 @@ export type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home, section: "main" },
-  { href: "/parse", label: "Parse", icon: ClipboardCheck, section: "main" },
-  { href: "/jobs", label: "Jobs", icon: BriefcaseBusiness, section: "main" },
+  { href: "/parse", label: "Create Run", icon: ClipboardCheck, section: "main" },
+  { href: "/jobs", label: "Run Monitor", icon: BriefcaseBusiness, section: "main" },
   { href: "/review-queue", label: "Review Queue", icon: ListChecks, section: "main" },
   { href: "/assets", label: "Assets", icon: Boxes, section: "main" },
   { href: "/observability", label: "Observability", icon: Activity, section: "main" },
@@ -33,9 +33,16 @@ export const navigationItems: NavItem[] = [
 
 export function titleForPath(pathname: string) {
   if (pathname === "/home") return "Home";
+  if (pathname.startsWith("/create-run")) return "Create Run";
+  if (pathname.startsWith("/run-monitor")) return "Run Monitor";
   const active =
     navigationItems.find((item) =>
-      item.href === "/" ? pathname === "/" || pathname === "/home" : pathname.startsWith(item.href),
+      isActivePath(pathname, item.href),
     ) ?? navigationItems[0];
   return active.label;
+}
+
+export function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/" || pathname === "/home";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

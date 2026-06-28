@@ -46,23 +46,23 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         ]);
         setData({ job, plan, quality, assets, file, profile });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load job.");
+        setError(err instanceof Error ? err.message : "Unable to load run.");
       }
     }
     load();
   }, [params.job_id]);
 
   if (error) return <Panel><div className="p-4 text-sm text-red-700">{error}</div></Panel>;
-  if (!data) return <Panel><div className="p-4 text-sm text-muted">Loading job detail...</div></Panel>;
+  if (!data) return <Panel><div className="p-4 text-sm text-muted">Loading run detail...</div></Panel>;
 
   const { job, plan, quality, assets, file, profile } = data;
   const firstAsset = assets[0];
 
   return (
     <div className="space-y-5">
-      <Link className="inline-flex items-center gap-2 text-sm font-semibold text-accent-strong" href="/jobs">
+      <Link className="inline-flex items-center gap-2 text-sm font-semibold text-accent-strong" href="/run-monitor">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Back to jobs
+        Back to Run Monitor
       </Link>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -101,7 +101,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         <Panel>
           <PanelHeader title="Parsing Timeline" />
           <ol className="space-y-3 p-4 text-sm">
-            <TimelineItem label="Job created" value={new Date(job.created_at).toLocaleString()} />
+            <TimelineItem label="Run created" value={new Date(job.created_at).toLocaleString()} />
             <TimelineItem label="Plan selected" value={plan?.selected_parser_id ?? "Pending"} />
             <TimelineItem label="Parser executed" value={firstAsset?.parser_used ?? "Pending"} />
             <TimelineItem label="Quality evaluated" value={quality ? pct(quality.extraction_confidence) : "Pending"} />
@@ -155,7 +155,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                   <td className="px-4 py-3 text-muted">{pct(Number(asset.quality_report?.extraction_confidence ?? 0))}</td>
                 </tr>
               ))}
-              {!assets.length ? <tr><td className="px-4 py-8 text-muted" colSpan={6}>No assets have been published for this job.</td></tr> : null}
+              {!assets.length ? <tr><td className="px-4 py-8 text-muted" colSpan={6}>No assets have been published for this run.</td></tr> : null}
             </tbody>
           </table>
         </div>

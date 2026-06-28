@@ -31,7 +31,7 @@ export default function AssetDetailPage({ params }: { params: { asset_id: string
         <PanelHeader title={`Asset ${shortId(asset.asset_id)}`} />
         <div className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Field label="File" value={shortId(asset.file_id)} />
-          <Field label="Job" value={shortId(asset.job_id)} />
+          <Field label="Run" value={shortId(asset.job_id)} />
           <Field label="Parser used" value={asset.parser_used} />
           <Field label="Skill used" value={asset.skill_used ?? "--"} />
           <Field label="Fallback used" value={asset.fallback_used ? "Yes" : "No"} />

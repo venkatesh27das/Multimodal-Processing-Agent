@@ -258,6 +258,18 @@ export type PaginatedJobsResponse = {
   totalPages: number;
 };
 
+type BackendPaginatedJobsResponse = {
+  jobs?: BackendParseJob[];
+  items?: BackendParseJob[];
+  results?: BackendParseJob[];
+  total?: number;
+  page?: number;
+  page_size?: number;
+  pageSize?: number;
+  total_pages?: number;
+  totalPages?: number;
+};
+
 export class UnsupportedJobActionError extends Error {
   constructor(action: string) {
     super(`${action} is not available in the backend yet.`);
@@ -283,10 +295,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const jobsApi = {
-  async listJobs(): Promise<Job[]> {
-    const jobs = await request<BackendParseJob[]>("/jobs");
+  async listJobs(filters?: Partial<JobFilters>): Promise<Job[]> {
+    const response = await request<BackendParseJob[] | BackendPaginatedJobsResponse>(
+      `/jobs${buildJobsQuery(filters)}`,
+    );
+    const jobs = Array.isArray(response)
+      ? response
+      : response.jobs ?? response.items ?? response.results ?? [];
     const enriched = await Promise.all(jobs.map(enrichJob));
     return enriched;
+  },
+
+  async listJobsPage(filters: JobFilters): Promise<PaginatedJobsResponse> {
+    const response = await request<BackendParseJob[] | BackendPaginatedJobsResponse>(
+      `/jobs${buildJobsQuery(filters)}`,
+    );
+    if (Array.isArray(response)) {
+      const enriched = await Promise.all(response.map(enrichJob));
+      return filterAndPaginateJobs(enriched, filters);
+    }
+
+    const backendJobs = response.jobs ?? response.items ?? response.results ?? [];
+    const enriched = await Promise.all(backendJobs.map(enrichJob));
+    return {
+      jobs: enriched,
+      total: response.total ?? enriched.length,
+      page: response.page ?? filters.page,
+      pageSize: response.page_size ?? response.pageSize ?? filters.pageSize,
+      totalPages: response.total_pages ?? response.totalPages ?? Math.max(1, Math.ceil((response.total ?? enriched.length) / filters.pageSize)),
+    };
   },
 
   getJob(jobId: string) {
@@ -387,6 +424,21 @@ export const jobsApi = {
     }
   },
 };
+
+function buildJobsQuery(filters?: Partial<JobFilters>): string {
+  if (!filters) return "";
+  const params = new URLSearchParams();
+  if (filters.search) params.set("search", filters.search);
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.fileType && filters.fileType !== "all") params.set("file_type", filters.fileType);
+  if (filters.parser && filters.parser !== "all") params.set("parser", filters.parser);
+  if (filters.dateRange && filters.dateRange !== "all") params.set("date_range", filters.dateRange);
+  if (filters.reviewOnly) params.set("review_required", "true");
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.pageSize) params.set("page_size", String(filters.pageSize));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
 
 export function createParsingPlan(recommendations: ParserRecommendation[], configuration: ParseConfiguration): ParsingPlan {
   const skills = Array.from(

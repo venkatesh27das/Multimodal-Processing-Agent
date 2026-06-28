@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { Building2, ChevronDown, Hexagon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { navigationItems } from "@/lib/navigation";
+import { isActivePath, navigationItems } from "@/lib/navigation";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -60,9 +60,9 @@ function NavGroup({
       {items.map((item) => {
         const Icon = item.icon;
         const active =
-          item.href === "/"
-            ? pathname === "/" || pathname === "/home"
-            : pathname.startsWith(item.href);
+          isActivePath(pathname, item.href) ||
+          (item.href === "/parse" && pathname.startsWith("/create-run")) ||
+          (item.href === "/jobs" && pathname.startsWith("/run-monitor"));
         return (
           <Link
             key={item.href}

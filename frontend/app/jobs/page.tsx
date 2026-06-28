@@ -72,21 +72,21 @@ export default function JobsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Jobs"
-        description="Monitor parsing jobs, review routing decisions, and inspect output quality."
+        title="Run Monitor"
+        description="Monitor parsing runs, review routing decisions, and inspect output quality."
         action={
           <>
             <ActionButton
               icon={actions.busyAction === "export" ? Loader2 : Download}
               variant="secondary"
               onClick={actions.exportJobs}
-              title="Backend export endpoint is not available yet."
-              disabled={actions.busyAction === "export"}
+              title={actions.exportUnsupported ? "Export endpoint is not available yet." : "Export runs"}
+              disabled={actions.busyAction === "export" || actions.exportUnsupported}
             >
               Export
             </ActionButton>
-            <Link href="/parse">
-              <ActionButton icon={Plus}>New Parse Job</ActionButton>
+            <Link href="/create-run">
+              <ActionButton icon={Plus}>Create Run</ActionButton>
             </Link>
           </>
         }
@@ -99,7 +99,7 @@ export default function JobsPage() {
       <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
         <MetricCard
           icon={FileCheck2}
-          label="Total Jobs"
+          label="Total Runs"
           value={String(jobs.length)}
           delta={`${completed} completed`}
           tone="info"
@@ -109,7 +109,7 @@ export default function JobsPage() {
           icon={Star}
           label="Avg Quality"
           value={avgQuality}
-          delta="Quality across current jobs"
+          delta="Quality across current runs"
           tone="success"
           data={[7, 8, 7, 10, 9, 11, 10]}
         />
@@ -137,7 +137,7 @@ export default function JobsPage() {
             <Search className="h-4 w-4" aria-hidden="true" />
             <input
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
-              placeholder="Search jobs, files, parsers..."
+              placeholder="Search runs, files, parsers..."
               value={filters.search}
               onChange={(event) => updateFilters({ search: event.target.value })}
             />
@@ -193,7 +193,7 @@ export default function JobsPage() {
 
         <DataTable
           columns={[
-            "Job / File",
+            "Run / File",
             "Objective",
             "Parser",
             "Status",
@@ -215,7 +215,7 @@ export default function JobsPage() {
               <td colSpan={10} className="p-4">
                 <EmptyState
                   icon={Search}
-                  title="No jobs match these filters"
+                  title="No runs match these filters"
                   description="Try clearing the search, status, parser, file type, date range, or review-only filter."
                 />
               </td>
@@ -311,7 +311,7 @@ function JobRow({
           <button
             className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent"
             type="button"
-            title="View job"
+            title="View run"
             onClick={() => actions.viewJob(job)}
           >
             <Eye className="h-4 w-4" aria-hidden="true" />
@@ -351,7 +351,7 @@ function JobRow({
 function JobStatusPill({ job }: { job: Job }) {
   if (job.status === "Completed") return <StatusPill status="completed">Completed</StatusPill>;
   if (job.status === "Review Required") return <StatusPill status="review">Review Required</StatusPill>;
-  if (job.status === "Failed") return <StatusPill status="failed">Failed</StatusPill>;
+  if (job.status === "Failed" || job.status === "Cancelled") return <StatusPill status="failed">{job.status}</StatusPill>;
   if (job.status === "Running" || job.status === "In Progress") {
     return <span className="inline-flex h-6 items-center rounded-full border border-blue-200 bg-info-soft px-2 text-xs font-bold text-info">{job.status}</span>;
   }

@@ -96,6 +96,54 @@ class SkillDefinitionRead(APIModel):
     updated_at: datetime
 
 
+class SkillDefinitionCreate(APIModel):
+    skill_id: str | None = None
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    supported_document_types: list[FileType] = Field(default_factory=list)
+    extraction_schema: dict[str, object] = Field(default_factory=dict)
+    validation_rules: dict[str, object] = Field(default_factory=dict)
+    examples: list[dict[str, object]] = Field(default_factory=list)
+    post_processing_hook: str | None = None
+    enabled: bool = True
+    version: str = "0.1.0"
+
+
+class SkillDefinitionUpdate(APIModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    supported_document_types: list[FileType] | None = None
+    extraction_schema: dict[str, object] | None = None
+    validation_rules: dict[str, object] | None = None
+    examples: list[dict[str, object]] | None = None
+    post_processing_hook: str | None = None
+    enabled: bool | None = None
+    version: str | None = None
+
+
+class SkillDuplicateRequest(APIModel):
+    skill_id: str | None = None
+    name: str | None = None
+
+
+class SkillImportResponse(APIModel):
+    imported: int
+    skill_ids: list[str]
+
+
+class SkillWorkflowAttachmentRequest(APIModel):
+    workflow_id: str | None = None
+    workflow_name: str = Field(min_length=1)
+    notes: str | None = None
+
+
+class SkillWorkflowAttachmentResponse(APIModel):
+    skill_id: str
+    workflow_id: str
+    workflow_name: str
+    attached: bool
+
+
 class SkillRead(APIModel):
     skill_id: str
     name: str

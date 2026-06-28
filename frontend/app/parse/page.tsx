@@ -483,7 +483,7 @@ function ReviewState({
       <div className="space-y-4">
         <div>
           <h2 className="text-2xl font-bold text-ink">Start Parsing</h2>
-          <p className="mt-1 text-sm text-muted">Review your selections and configuration before starting the parsing job.</p>
+          <p className="mt-1 text-sm text-muted">Review your selections and configuration before starting the parsing run.</p>
         </div>
 
         <Card className="p-5">
@@ -574,7 +574,7 @@ function ReviewState({
       </div>
 
       <Card className="p-5">
-        <SectionHeader title="Ready to run" description="Review the summary below and start the job." />
+        <SectionHeader title="Ready to run" description="Review the summary below and start the run." />
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MiniStat label="Files" value={String(files.length)} detail="Selected" />
           <MiniStat label="Estimated cost" value={plan?.estimatedCost.replace("~ ", "") ?? "$0.04"} detail="USD" />
@@ -593,9 +593,9 @@ function ReviewState({
         {jobError ? <ErrorBox message={jobError} /> : null}
         <ActionButton className="mt-5 w-full" type="button" variant="secondary" onClick={onBack}>Back</ActionButton>
         <ActionButton className="mt-3 w-full" type="button" icon={creatingJob ? Loader2 : Play} disabled={creatingJob} onClick={onRun}>
-          {creatingJob ? "Creating Job..." : "Run Parsing Job"}
+          {creatingJob ? "Creating Run..." : "Start Run"}
         </ActionButton>
-        <p className="mt-3 text-center text-xs text-muted">This action will start the parsing job immediately.</p>
+        <p className="mt-3 text-center text-xs text-muted">This action will start the parsing run immediately.</p>
       </Card>
     </div>
   );
@@ -632,15 +632,15 @@ function RunningState({
           <div className="flex items-center gap-3">
             <CheckCircle2 className="h-7 w-7 text-success" aria-hidden="true" />
             <div>
-              <p className="text-base font-bold text-emerald-800">Parsing job created successfully.</p>
-              <p className="text-sm text-emerald-700">Job ID: {firstJob?.id ?? "--"}</p>
+              <p className="text-base font-bold text-emerald-800">Parsing run created successfully.</p>
+              <p className="text-sm text-emerald-700">Run ID: {firstJob?.id ?? "--"}</p>
             </div>
           </div>
           <div className="flex gap-3">
-            <Link href={firstJob?.id ? `/jobs/${firstJob.id}` : "/jobs"}>
-              <ActionButton type="button" icon={ExternalLink} variant="secondary">View Job</ActionButton>
+            <Link href={firstJob?.id ? `/jobs/${firstJob.id}` : "/run-monitor"}>
+              <ActionButton type="button" icon={ExternalLink} variant="secondary">View Run</ActionButton>
             </Link>
-            <ActionButton type="button" onClick={onReset}>Start Another Parse</ActionButton>
+            <ActionButton type="button" onClick={onReset}>Create Another Run</ActionButton>
           </div>
         </div>
       </Card>
@@ -656,7 +656,7 @@ function RunningState({
                   </span>
                   <div>
                     <p className="text-sm font-bold text-ink">{index + 1}. {label}</p>
-                    <p className="text-xs text-muted">{index === 2 ? "Job submitted successfully" : "Settings and destinations set"}</p>
+                    <p className="text-xs text-muted">{index === 2 ? "Run submitted successfully" : "Settings and destinations set"}</p>
                   </div>
                 </div>
               ))}
@@ -740,15 +740,15 @@ function RunningState({
             <div className="mt-4 space-y-3">
               <SummaryMetric icon={FileCheck2} label="Files Processed" value={String(progress.processedFiles)} detail={`of ${progress.totalFiles}`} tone="info" />
               <SummaryMetric icon={Timer} label="Remaining" value={String(Math.max(0, progress.totalFiles - progress.processedFiles))} detail="In progress / queued" tone="accent" />
-              <SummaryMetric icon={Timer} label="Elapsed Time" value="00:00:15" detail="Since job start" tone="success" />
+              <SummaryMetric icon={Timer} label="Elapsed Time" value="00:00:15" detail="Since run start" tone="success" />
               <SummaryMetric icon={Timer} label="Estimated Completion" value={estimatedCompletion(false)} detail="Local time" tone="purple" />
             </div>
           </Card>
           <Card className="p-5">
-            <SectionHeader title="Next destinations" description="You can monitor or review results as the job progresses." />
+            <SectionHeader title="Next destinations" description="You can monitor or review results as the run progresses." />
             <div className="mt-4 space-y-3">
               {[
-                ["Open Jobs", "Track all running jobs", "/jobs"],
+                ["Open Run Monitor", "Track all active runs", "/run-monitor"],
                 ["Open Review Queue", "Review items as they complete", "/review-queue"],
                 ["Open Assets", "View parsed outputs", "/assets"],
               ].map(([title, description, href]) => (
