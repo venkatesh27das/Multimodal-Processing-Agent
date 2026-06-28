@@ -2,13 +2,25 @@
 
 import clsx from "clsx";
 import { useState } from "react";
-import { Copy, FileText, Link2, Package, Plus, Search, ShieldCheck, Star, Upload } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  FileText,
+  Link2,
+  MoreVertical,
+  Package,
+  Plus,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Star,
+  Upload,
+} from "lucide-react";
 import {
   ActionButton,
   Card,
   EmptyState,
   MetricCard,
-  PageHeader,
   StatusPill,
   Tag,
 } from "@/components/design-system";
@@ -58,31 +70,31 @@ export default function SkillsPage() {
   const actions = useSkillActions({ onRefresh: loadSkills });
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Skills"
-        description="Manage reusable extraction, validation, and post-processing skills for parsing workflows."
-        action={
-          <>
-            <input
-              ref={actions.fileInputRef}
-              className="sr-only"
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => {
-                void actions.handleSkillPackFile(event.target.files?.[0] ?? null);
-                event.currentTarget.value = "";
-              }}
-            />
-            <ActionButton variant="secondary" icon={Upload} onClick={actions.importSkillPack} disabled={actions.busyAction === "import"}>
-              Import Skill Pack
-            </ActionButton>
-            <ActionButton icon={Plus} onClick={actions.createSkill} disabled={actions.busyAction === "create"}>
-              Create Skill
-            </ActionButton>
-          </>
-        }
-      />
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-ink">Skills</h2>
+          <p className="mt-1 text-sm text-muted">Manage reusable extraction, validation, and post-processing skills for parsing workflows.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <input
+            ref={actions.fileInputRef}
+            className="sr-only"
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => {
+              void actions.handleSkillPackFile(event.target.files?.[0] ?? null);
+              event.currentTarget.value = "";
+            }}
+          />
+          <ActionButton variant="secondary" icon={Upload} onClick={actions.importSkillPack} disabled={actions.busyAction === "import"}>
+            Import Skill Pack
+          </ActionButton>
+          <ActionButton icon={Plus} onClick={actions.createSkill} disabled={actions.busyAction === "create"}>
+            Create Skill
+          </ActionButton>
+        </div>
+      </div>
 
       {actions.toast ? (
         <div
@@ -99,8 +111,8 @@ export default function SkillsPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label className="flex h-11 min-w-[300px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex h-10 min-w-[280px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
           <Search className="h-4 w-4" aria-hidden="true" />
           <input
             className="min-w-0 flex-1 bg-transparent font-medium text-ink outline-none placeholder:text-muted"
@@ -109,7 +121,7 @@ export default function SkillsPage() {
             onChange={(event) => updateFilters({ search: event.target.value })}
           />
         </label>
-        <div className="flex h-11 overflow-hidden rounded-lg border border-border bg-white shadow-panel">
+        <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-white shadow-panel">
           {tabs.map((tab) => (
             <button
               key={tab.value}
@@ -122,37 +134,43 @@ export default function SkillsPage() {
           ))}
         </div>
         <FilterSelect
+          label="Status"
           value={filters.status}
           options={statusOptions}
           onChange={(value) => updateFilters({ status: value as "all" | SkillStatus })}
         />
         <FilterSelect
+          label="Attached Parser"
           value={filters.attachedParser}
           options={[{ label: "All Parsers", value: "all" }, ...parserOptions.map((parser) => ({ label: parser, value: parser }))]}
           onChange={(value) => updateFilters({ attachedParser: value })}
         />
+        <button className="grid h-10 w-11 place-items-center rounded-lg border border-border bg-white text-muted shadow-panel" type="button" aria-label="More filters">
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
       </div>
 
       {error ? (
         <Card className="border-danger/20 bg-danger-soft p-4 text-sm font-semibold text-red-700">{error}</Card>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {loading ? (
           Array.from({ length: 5 }).map((_, index) => <MetricSkeleton key={index} />)
         ) : (
           <>
-            <MetricCard icon={FileText} label="Total Skills" value={String(kpis.totalSkills)} delta="Backend registry" tone="info" data={[7, 8, 12, 9, 13, 11, 14]} />
-            <MetricCard icon={ShieldCheck} label="Active in Workflows" value={String(kpis.activeInWorkflows)} delta="Derived when metrics unavailable" tone="success" data={[5, 6, 8, 7, 10, 9, 12]} />
-            <MetricCard icon={Package} label="Reusable Packs" value={String(kpis.reusablePacks)} delta="Derived from skill tags" tone="purple" data={[3, 5, 4, 7, 6, 9, 10]} />
-            <MetricCard icon={Star} label="Avg Success" value={formatPercent(kpis.avgSuccess)} delta="Derived when metrics unavailable" tone="warning" data={[6, 7, 8, 7, 9, 10, 12]} />
+            <MetricCard icon={FileText} label="Total Skills" value={String(kpis.totalSkills)} delta="From backend registry" tone="info" data={[1, 2, 3, 4, 5, 6, Math.max(1, kpis.totalSkills)]} />
+            <MetricCard icon={ShieldCheck} label="Active in Workflows" value={String(kpis.activeInWorkflows)} delta="Linked parser coverage" tone="success" data={[1, 1, 2, 2, 3, 4, Math.max(1, kpis.activeInWorkflows)]} />
+            <MetricCard icon={Package} label="Reusable Packs" value={String(kpis.reusablePacks)} delta="From backend tags" tone="purple" data={[1, 2, 2, 3, 3, 4, Math.max(1, kpis.reusablePacks)]} />
+            <MetricCard icon={Star} label="Avg Success" value={formatPercent(kpis.avgSuccess)} delta="Awaiting backend metrics" tone="warning" data={[0, 0, 0, 0, 0, 0, 0]} />
             <MetricCard icon={Star} label="Most Used" value={kpis.mostUsed} tone="info" />
           </>
         )}
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 2xl:grid-cols-[0.92fr_1.08fr]">
+        <div>
+          <div className="grid gap-3 md:grid-cols-2">
           {loading ? Array.from({ length: 6 }).map((_, index) => <SkillCardSkeleton key={index} />) : null}
           {!loading && filteredSkills.length === 0 ? (
             <div className="md:col-span-2">
@@ -163,14 +181,14 @@ export default function SkillsPage() {
             <button
               key={skill.skillId}
               className={clsx(
-                "rounded-xl border bg-white p-4 text-left shadow-panel transition hover:bg-surface",
+                "rounded-lg border bg-white p-4 text-left shadow-panel transition hover:bg-surface",
                 selectedId === skill.skillId ? "border-accent bg-accent-soft/30" : "border-border",
               )}
               onClick={() => setSelectedId(skill.skillId)}
               type="button"
             >
               <div className="flex gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent">
+                <span className={clsx("grid h-12 w-12 shrink-0 place-items-center rounded-lg", selectedId === skill.skillId ? "bg-accent-soft text-accent" : "bg-info-soft text-info")}>
                   <FileText className="h-6 w-6" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -183,24 +201,33 @@ export default function SkillsPage() {
               </div>
               <div className="mt-4 flex items-center justify-between gap-2 text-xs">
                 <span className="font-bold text-muted">{skill.version}</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
                 <StatusPill status={statusTone(skill.status)}>{labelForStatus(skill.status)}</StatusPill>
                 <span className="text-muted">{skill.runCountLabel}</span>
                 <span className="text-muted">{skill.linkedParserCount} parsers</span>
               </div>
             </button>
           )) : null}
+          </div>
+          {!loading && filteredSkills.length ? (
+            <div className="mt-4 flex items-center justify-between text-sm text-muted">
+              <span>Showing 1-{filteredSkills.length} of {filteredSkills.length}</span>
+              <span>{filteredSkills.length} skill{filteredSkills.length === 1 ? "" : "s"} loaded from backend</span>
+            </div>
+          ) : null}
         </div>
 
         {detailLoading ? <DetailSkeleton /> : null}
         {!detailLoading && selectedSkill ? (
-          <Card className="p-5">
+          <Card className="overflow-hidden">
+            <div className="p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex gap-4">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
                   <FileText className="h-6 w-6" aria-hidden="true" />
                 </span>
                 <div>
-                  <h3 className="text-2xl font-bold tracking-[-0.02em] text-ink">{selectedSkill.name}</h3>
+                  <h3 className="text-xl font-bold text-ink">{selectedSkill.name}</h3>
                   <p className="mt-1 text-sm text-muted">{selectedSkill.description}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {selectedSkill.tags.map((tag) => <Tag key={tag}>{tag.toUpperCase()}</Tag>)}
@@ -208,10 +235,15 @@ export default function SkillsPage() {
                   </div>
                 </div>
               </div>
-              <StatusPill status={statusTone(selectedSkill.status)}>{labelForStatus(selectedSkill.status)}</StatusPill>
+              <div className="flex items-center gap-3">
+                <StatusPill status={statusTone(selectedSkill.status)}>{labelForStatus(selectedSkill.status)}</StatusPill>
+                <button className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface" type="button" aria-label="More skill actions">
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-4 gap-4 border-b border-border pb-5">
+            <div className="mt-6 grid gap-4 border-b border-border pb-5 md:grid-cols-4">
               <DetailMetric label="Weekly Runs" value={selectedSkill.weeklyRuns.toLocaleString()} />
               <DetailMetric label="Last Updated" value={selectedSkill.lastUpdated} />
               <DetailMetric label="Success Rate" value={formatPercent(selectedSkill.successRate)} positive={selectedSkill.successRate !== null} />
@@ -228,14 +260,16 @@ export default function SkillsPage() {
                 ["Workflow Usage", selectedSkill.workflowUsage],
                 ["Recent Versions", selectedSkill.recentVersions.join(", ")],
               ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                <div key={label} className="grid grid-cols-[150px_1fr_20px] items-center gap-4 px-4 py-3 text-sm">
                   <span className="font-bold text-ink">{label}</span>
                   <span className="truncate text-muted">{value}</span>
+                  <ChevronRight className="h-4 w-4 text-muted" />
                 </div>
               ))}
             </div>
+            </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 border-t border-border p-4">
               <ActionButton variant="secondary" icon={FileText} onClick={() => void actions.editSkill(selectedSkill)} disabled={actions.busyAction === `edit-${selectedSkill.skillId}`}>
                 Edit Skill
               </ActionButton>
@@ -430,7 +464,7 @@ function AttachWorkflowModal({
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 px-4 py-6">
-      <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto p-5">
+      <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto p-4">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-xl font-bold text-ink">{title}</h3>
@@ -449,7 +483,7 @@ function TextField({ label, value, placeholder, onChange }: { label: string; val
     <label className="block text-xs font-bold text-muted">
       {label}
       <input
-        className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink outline-none focus:border-accent"
+        className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink outline-none focus:border-accent"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -497,10 +531,12 @@ function DetailMetric({ label, value, positive = false }: { label: string; value
 }
 
 function FilterSelect({
+  label,
   value,
   options,
   onChange,
 }: {
+  label: string;
   value: string;
   options: Array<{ label: string; value: string }>;
   onChange: (value: string) => void;
@@ -508,12 +544,15 @@ function FilterSelect({
   const selected = options.find((option) => option.value === value)?.label ?? options[0]?.label ?? value;
   return (
     <label className="relative block">
-      <div className="pointer-events-none flex h-11 min-w-[170px] items-center justify-between rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel">
-        <span className="max-w-[150px] truncate">{selected}</span>
+      <div className="pointer-events-none flex h-10 min-w-[180px] items-center justify-between rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel">
+        <span className="min-w-0">
+          <span className="block text-[11px] leading-none text-muted">{label}</span>
+          <span className="block max-w-[150px] truncate pt-1">{selected}</span>
+        </span>
         <span className="text-muted">⌄</span>
       </div>
       <select
-        className="absolute inset-0 h-11 w-full cursor-pointer opacity-0"
+        className="absolute inset-0 h-10 w-full cursor-pointer opacity-0"
         value={value}
         aria-label={selected}
         onChange={(event) => onChange(event.target.value)}

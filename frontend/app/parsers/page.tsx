@@ -1,6 +1,23 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Gauge, Loader2, Plus, Search, Timer, Workflow, X } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  Gauge,
+  GitBranch,
+  Layers3,
+  Loader2,
+  MoreVertical,
+  Plus,
+  Search,
+  ShieldCheck,
+  Timer,
+  Workflow,
+  X,
+} from "lucide-react";
 import {
   ActionButton,
   Card,
@@ -8,7 +25,6 @@ import {
   EmptyState,
   MetricCard,
   MiniBar,
-  PageHeader,
   StatusPill,
   Tag,
   Toggle,
@@ -51,30 +67,30 @@ export default function ParsersPage() {
   const actions = useParserActions({ onRefresh: loadParsers });
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Parsers"
-        description="Manage parser registry, health, benchmarking, and routing readiness across the workspace."
-        action={
-          <>
-            <ActionButton
-              variant="secondary"
-              icon={actions.busyAction === "benchmark-all" ? Loader2 : Gauge}
-              disabled={actions.busyAction === "benchmark-all"}
-              onClick={actions.runBenchmark}
-            >
-              Run Benchmark
-            </ActionButton>
-            <ActionButton icon={Plus} onClick={actions.registerParser}>Register Parser</ActionButton>
-          </>
-        }
-      />
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-ink">Parsers</h2>
+          <p className="mt-1 text-sm text-muted">Manage parser registry, health, benchmarking, and routing readiness across the workspace.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <ActionButton
+            variant="secondary"
+            icon={actions.busyAction === "benchmark-all" ? Loader2 : Gauge}
+            disabled={actions.busyAction === "benchmark-all"}
+            onClick={actions.runBenchmark}
+          >
+            Run Benchmark
+          </ActionButton>
+          <ActionButton icon={Plus} onClick={actions.registerParser}>Register Parser</ActionButton>
+        </div>
+      </div>
 
       {actions.toast ? <Toast tone={actions.toast.tone} message={actions.toast.message} onClose={actions.clearToast} /> : null}
 
       <Card className="p-4">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <label className="flex h-11 min-w-[300px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex h-10 min-w-[280px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
             <Search className="h-4 w-4" aria-hidden="true" />
             <input
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
@@ -85,30 +101,34 @@ export default function ParsersPage() {
           </label>
           <FilterSelect
             ariaLabel="Modality filter"
+            label="Modality"
             value={filters.modality}
             onChange={(value) => updateFilters({ modality: value })}
             options={[{ label: "All Modalities", value: "all" }, ...modalityOptions.map((item) => ({ label: item.toUpperCase(), value: item }))]}
           />
           <FilterSelect
             ariaLabel="Provider filter"
+            label="Provider"
             value={filters.provider}
             onChange={(value) => updateFilters({ provider: value })}
             options={[{ label: "All Providers", value: "all" }, ...providerOptions.map((item) => ({ label: item, value: item }))]}
           />
           <FilterSelect
             ariaLabel="Status filter"
+            label="Status"
             value={filters.status}
             onChange={(value) => updateFilters({ status: value as ParserFilters["status"] })}
             options={statusOptions}
           />
           <FilterSelect
             ariaLabel="Environment filter"
+            label="Environment"
             value={filters.environment}
             onChange={(value) => updateFilters({ environment: value })}
             options={[{ label: "All Environments", value: "all" }, ...environmentOptions.map((item) => ({ label: item.toUpperCase(), value: item }))]}
           />
           <button
-            className="flex h-11 items-center gap-3 px-2 text-sm font-semibold text-ink"
+            className="ml-auto flex h-10 items-center gap-3 px-2 text-sm font-semibold text-ink"
             type="button"
             onClick={() => updateFilters({ degradedOnly: !filters.degradedOnly })}
           >
@@ -119,7 +139,7 @@ export default function ParsersPage() {
         {error ? <InlineError message={error} /> : null}
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {loading ? (
           <>
             <MetricSkeleton />
@@ -130,10 +150,10 @@ export default function ParsersPage() {
           </>
         ) : (
           <>
-            <MetricCard icon={FileText} label="Total Parsers" value={String(kpis.totalParsers)} delta="From registry" tone="info" data={[5, 7, 8, 10, 9, 13, Math.max(1, kpis.totalParsers)]} />
+            <MetricCard icon={FileText} label="Total Parsers" value={String(kpis.totalParsers)} delta="From backend registry" tone="info" data={[5, 7, 8, 10, 9, 13, Math.max(1, kpis.totalParsers)]} />
             <MetricCard icon={CheckCircle2} label="Active" value={String(kpis.activeParsers)} delta="Healthy or active" tone="success" data={[7, 8, 7, 9, 12, 10, Math.max(1, kpis.activeParsers)]} />
-            <MetricCard icon={AlertTriangle} label="Degraded" value={String(kpis.degradedParsers)} delta="Needs attention" tone="warning" data={[8, 6, 7, 5, 4, 3, Math.max(1, kpis.degradedParsers)]} />
-            <MetricCard icon={Workflow} label="Avg Success" value={formatPercent(kpis.avgSuccessRate)} delta="Derived from metrics" tone="info" data={[6, 8, 7, 10, 9, 11, Math.max(1, Math.round((kpis.avgSuccessRate ?? 0.9) * 10))]} />
+            <MetricCard icon={AlertTriangle} label="Degraded" value={String(kpis.degradedParsers)} delta="Backend status" tone="warning" data={[8, 6, 7, 5, 4, 3, Math.max(1, kpis.degradedParsers)]} />
+            <MetricCard icon={Workflow} label="Avg Success" value={formatPercent(kpis.avgSuccessRate)} delta="From parser metrics" tone="info" data={[6, 8, 7, 10, 9, 11, Math.max(1, Math.round((kpis.avgSuccessRate ?? 0.9) * 10))]} />
             <MetricCard icon={Timer} label="Avg Latency" value={formatLatency(kpis.avgLatencyMs)} delta="From parser metrics" tone="purple" data={[9, 8, 10, 7, 9, 10, Math.max(1, Math.round((kpis.avgLatencyMs ?? 3200) / 1000))]} />
           </>
         )}
@@ -157,36 +177,61 @@ export default function ParsersPage() {
             </tr>
           ) : null}
         </DataTable>
+        {!loading && filteredParsers.length ? (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted">
+            <span>Showing {filteredParsers.length} of {filteredParsers.length}</span>
+            <span>{kpis.totalParsers} parser{kpis.totalParsers === 1 ? "" : "s"} loaded from backend</span>
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-4 2xl:grid-cols-[1fr_1.1fr]">
-        <Card className="p-5">
-          <PageHeader title="Routing Policy Summary" />
+        <Card className="p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <h3 className="text-base font-bold text-ink">Routing Policy Summary</h3>
+            <span className="grid h-4 w-4 place-items-center rounded-full border border-border text-[10px] font-bold text-muted">i</span>
+          </div>
           {loading ? (
             <PanelSkeleton columns={4} />
           ) : routingPolicy.items.length ? (
-            <div className="grid gap-3 md:grid-cols-4">
-              {routingPolicy.items.slice(0, 4).map((item) => (
-                <div key={item.title} className="border-r border-border last:border-r-0">
-                  <p className="text-sm font-bold text-ink">{item.title}</p>
-                  <p className="mt-2 text-xs leading-5 text-muted">{item.body}</p>
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="grid overflow-hidden rounded-lg border border-border md:grid-cols-4">
+                {routingPolicy.items.slice(0, 4).map((item, index) => (
+                  <div key={item.title} className="border-b border-border p-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
+                    <div className="mb-3 grid h-7 w-7 place-items-center rounded-lg bg-surface text-accent">
+                      {index === 0 ? <ShieldCheck className="h-4 w-4" /> : index === 1 ? <Layers3 className="h-4 w-4" /> : index === 2 ? <GitBranch className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                    </div>
+                    <p className="text-sm font-bold text-ink">{item.title}</p>
+                    <p className="mt-2 text-xs leading-5 text-muted">{item.body}</p>
+                  </div>
+                ))}
+              </div>
+              <button className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-accent" type="button">
+                View routing rules <ArrowRight className="h-4 w-4" />
+              </button>
+            </>
           ) : (
             <p className="text-sm text-muted">No routing policy summary is available yet.</p>
           )}
         </Card>
-        <Card className="p-5">
-          <PageHeader title="Recent Parser Changes" action={<span className="text-sm font-bold text-accent">View all activity →</span>} />
+        <Card className="p-4">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h3 className="text-base font-bold text-ink">Recent Parser Changes</h3>
+            <button className="inline-flex items-center gap-2 text-sm font-bold text-accent" type="button">
+              View all activity <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
           {loading ? (
             <PanelSkeleton columns={1} />
           ) : activity.length ? (
-            <div className="space-y-3">
-              {activity.slice(0, 4).map((item) => (
-                <div key={item.id} className="grid grid-cols-[24px_1fr_120px] items-center gap-3 text-sm">
-                  <span className={`h-2 w-2 rounded-full ${activityTone(item)}`} />
+            <div className="space-y-1">
+              {activity.slice(0, 4).map((item, index) => (
+                <div key={item.id} className="grid grid-cols-[28px_1fr_130px_120px] items-center gap-3 rounded-lg px-1 py-2 text-sm">
+                  <span className={`grid h-7 w-7 place-items-center rounded-lg ${activityIconTone(item)}`}>
+                    {index === 0 ? <ArrowRight className="h-4 w-4" /> : index === 1 ? <Gauge className="h-4 w-4" /> : index === 2 ? <GitBranch className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                  </span>
                   <span className="font-semibold text-ink">{item.message}</span>
+                  <span className="text-xs capitalize text-muted">{item.tone}</span>
                   <span className="text-xs text-muted">{item.timestampLabel}</span>
                 </div>
               ))}
@@ -236,13 +281,19 @@ function ParserRow({
       <td className="px-4 py-3 text-muted">{formatLatency(parser.avgLatencyMs)}</td>
       <td className="px-4 py-3 font-semibold text-ink">{parser.costTier}</td>
       <td className="px-4 py-3"><StatusPill status={statusPillTone(parser.status)}>{statusLabel(parser.status)}</StatusPill></td>
-      <td className="px-4 py-3 text-muted">{parser.lastUpdated}</td>
+      <td className="whitespace-pre-line px-4 py-3 text-muted">{parser.lastUpdated}</td>
       <td className="px-4 py-3">
-        <div className="flex gap-4 text-sm font-bold text-accent">
+        <div className="flex items-center gap-4 text-sm font-bold text-accent">
           <button type="button" onClick={() => actions.viewParser(parser)}>View</button>
-          <button type="button" onClick={() => actions.configureParser()}>Configure</button>
-          <button type="button" disabled={benchmarkBusy} onClick={() => actions.benchmarkParser(parser)}>
-            {benchmarkBusy ? "Running..." : "Retry"}
+          {parser.status === "degraded" || parser.status === "warning" ? (
+            <button type="button" disabled={benchmarkBusy} onClick={() => actions.benchmarkParser(parser)}>
+              {benchmarkBusy ? "Running..." : "Retry benchmark"}
+            </button>
+          ) : (
+            <button type="button" onClick={() => actions.configureParser()}>Configure</button>
+          )}
+          <button type="button" aria-label={`More actions for ${parser.name}`} className="text-muted">
+            <MoreVertical className="h-4 w-4" />
           </button>
         </div>
       </td>
@@ -252,20 +303,23 @@ function ParserRow({
 
 function FilterSelect({
   ariaLabel,
+  label,
   onChange,
   options,
   value,
 }: {
   ariaLabel: string;
+  label: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
   value: string;
 }) {
   return (
-    <label className="relative block">
+    <label className="relative flex h-10 min-w-[170px] flex-col justify-center rounded-lg border border-border bg-white px-3 pr-9 shadow-panel">
+      <span className="text-[11px] font-semibold text-muted">{label}</span>
       <select
         aria-label={ariaLabel}
-        className="h-11 min-w-[150px] appearance-none rounded-lg border border-border bg-white px-3 pr-9 text-sm font-semibold text-ink shadow-panel outline-none transition focus:border-accent"
+        className="w-full appearance-none bg-transparent text-sm font-bold text-ink outline-none"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -419,9 +473,9 @@ function statusLabel(status: ParserStatus): string {
   return status.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
-function activityTone(activity: ParserActivity): string {
-  if (activity.tone === "success") return "bg-success";
-  if (activity.tone === "info") return "bg-info";
-  if (activity.tone === "purple") return "bg-purple";
-  return "bg-warning";
+function activityIconTone(activity: ParserActivity): string {
+  if (activity.tone === "success") return "bg-success-soft text-success";
+  if (activity.tone === "info") return "bg-info-soft text-info";
+  if (activity.tone === "purple") return "bg-purple-soft text-purple";
+  return "bg-warning-soft text-warning";
 }

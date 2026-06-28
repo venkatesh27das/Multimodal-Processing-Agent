@@ -64,7 +64,7 @@ export default function JobsPage() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-[-0.02em] text-ink">Jobs</h2>
+          <h2 className="text-xl font-bold text-ink">Jobs</h2>
           <p className="mt-1 text-sm text-muted">Track and manage all parsing jobs across your workspace.</p>
         </div>
         <Link href="/create-run">
@@ -78,7 +78,7 @@ export default function JobsPage() {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex h-11 min-w-[260px] flex-1 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted shadow-panel">
+          <label className="flex h-10 min-w-[250px] flex-1 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted shadow-panel">
             <input
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
               placeholder="Search jobs, files, objectives..."
@@ -114,7 +114,7 @@ export default function JobsPage() {
               ...parserOptions.map((parser) => ({ label: parser, value: parser })),
             ]}
           />
-          <label className="flex h-11 min-w-[220px] items-center gap-2 rounded-md border border-border bg-white px-3 text-sm shadow-panel">
+          <label className="flex h-10 min-w-[210px] items-center gap-2 rounded-md border border-border bg-white px-3 text-sm shadow-panel">
             <span className="min-w-0 flex-1">
               <span className="block text-[11px] font-bold text-muted">Date Range</span>
               <span className="block truncate font-semibold text-ink">May 19 - May 26, 2025</span>
@@ -122,7 +122,7 @@ export default function JobsPage() {
             <Calendar className="h-4 w-4 text-muted" aria-hidden="true" />
           </label>
           <button
-            className="ml-auto flex h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold text-muted"
+            className="ml-auto flex h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold text-muted"
             type="button"
             onClick={() => updateFilters({ reviewOnly: !filters.reviewOnly })}
           >
@@ -415,7 +415,7 @@ function FilterSelect({
       <span className="pointer-events-none absolute left-3 top-1.5 text-[11px] font-bold text-muted">{label}</span>
       <select
         aria-label={ariaLabel}
-        className="h-11 min-w-[150px] appearance-none rounded-md border border-border bg-white px-3 pb-1.5 pt-5 text-sm font-semibold text-ink shadow-panel outline-none transition focus:border-accent"
+        className="h-10 min-w-[145px] appearance-none rounded-md border border-border bg-white px-3 pb-1.5 pt-5 text-sm font-semibold text-ink shadow-panel outline-none transition focus:border-accent"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >

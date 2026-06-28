@@ -11,6 +11,7 @@ from starlette import status
 from backend.app.api.routes import (
     agent_skills,
     assets,
+    dashboard,
     files,
     health,
     jobs,
@@ -96,6 +97,8 @@ def create_app() -> FastAPI:
     app.include_router(agent_skills.router, prefix=settings.api_prefix, tags=["skills"])
     app.include_router(jobs.router, prefix=settings.api_prefix, tags=["jobs"])
     app.include_router(jobs.planning_router, prefix=settings.api_prefix, tags=["jobs"])
+    app.include_router(dashboard.router, prefix=settings.api_prefix, tags=["dashboard"])
+    app.include_router(dashboard.review_router, prefix=settings.api_prefix, tags=["review"])
     app.include_router(mcp.router, prefix=settings.api_prefix, tags=["mcp"])
     app.include_router(
         observability.observability_router,
@@ -104,6 +107,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(observability.audit_router, prefix=settings.api_prefix, tags=["audit"])
     app.include_router(parsers.router, prefix=settings.api_prefix, tags=["parser-registry"])
+    app.include_router(parsers.metrics_router, prefix=settings.api_prefix, tags=["parsers"])
     app.include_router(skills.router, prefix=settings.api_prefix, tags=["skills-registry"])
 
     return app

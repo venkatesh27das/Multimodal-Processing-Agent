@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -6,6 +8,7 @@ from backend.app.domain.enums import JobStatus, QualityStatus
 from backend.app.models.domain import FileProfile, ParsedAsset, ParsingPlan, QualityReport
 from backend.app.models.file import FileRecord
 from backend.app.models.job import ParseJob
+from backend.app.schemas.common import APIModel
 from backend.app.schemas.domain import (
     ParsedAssetRead,
     ParseJobRead,
@@ -17,10 +20,17 @@ from backend.app.schemas.domain import (
 )
 from backend.app.schemas.jobs import ParseJobCreate, ParseJobResponse
 from backend.app.services.orchestration_engine import orchestration_engine
+from backend.app.services.observability import observability_service
 from backend.app.services.parser_selector import parser_selector
 
 router = APIRouter(prefix="/parse-jobs")
 planning_router = APIRouter(prefix="/jobs")
+
+
+class JobsMetricsResponse(APIModel):
+    jobs_today: int
+    failed_jobs: int
+    success_rate: float
 
 
 @router.post("", response_model=ParseJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -128,6 +138,19 @@ def run_parse_job(
 @planning_router.get("", response_model=list[ParseJobRead])
 def list_jobs(db: Session = Depends(get_db)) -> list[ParseJobRead]:
     return db.query(ParseJob).order_by(ParseJob.created_at.desc()).all()
+
+
+@planning_router.get("/metrics", response_model=JobsMetricsResponse)
+def get_jobs_metrics(db: Session = Depends(get_db)) -> JobsMetricsResponse:
+    jobs = db.query(ParseJob).all()
+    today = datetime.now(UTC).date()
+    jobs_today = sum(1 for job in jobs if job.created_at.date() == today)
+    summary = observability_service.summary(db)
+    return JobsMetricsResponse(
+        jobs_today=jobs_today,
+        failed_jobs=summary.jobs.failed_jobs,
+        success_rate=summary.jobs.success_rate,
+    )
 
 
 @planning_router.get("/{job_id}", response_model=ParseJobRead)

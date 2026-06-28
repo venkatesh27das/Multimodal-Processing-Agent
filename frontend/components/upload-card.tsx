@@ -6,7 +6,7 @@ export function UploadCard() {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="max-w-2xl">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-[#E8F3F1] text-accent">
+            <div className="grid h-9 w-9 place-items-center rounded-md bg-[#E8F3F1] text-accent">
               <FileUp className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
@@ -32,4 +32,3 @@ export function UploadCard() {
     </section>
   );
 }
-

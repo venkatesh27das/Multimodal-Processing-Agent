@@ -281,7 +281,7 @@ function UploadState({
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
-          <CloudUpload className="h-10 w-10 text-slate-500" aria-hidden="true" />
+          <CloudUpload className="h-9 w-9 text-slate-500" aria-hidden="true" />
           <p className="mt-3 text-sm font-semibold text-ink">
             Drag and drop files here, or <span className="text-accent">click to browse</span>
           </p>
@@ -303,7 +303,7 @@ function UploadState({
           {uploadSources.map(({ label, icon: Icon }) => (
             <button
               key={label}
-              className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-white text-sm font-bold text-ink hover:bg-surface"
+              className="flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-white text-sm font-bold text-ink hover:bg-surface"
               type="button"
               onClick={() => inputRef.current?.click()}
             >
@@ -553,7 +553,7 @@ function ReviewState({
     <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
         <div>
-          <h2 className="text-2xl font-bold text-ink">Start Parsing</h2>
+          <h2 className="text-xl font-bold text-ink">Start Parsing</h2>
           <p className="mt-1 text-sm text-muted">Review your selections and configuration before starting the parsing run.</p>
         </div>
 
@@ -739,7 +739,7 @@ function RunningState({
             <div className="mt-5 flex items-end justify-between">
               <div>
                 <p className="text-xs font-semibold text-muted">Overall progress</p>
-                <p className="text-2xl font-bold text-ink">{progress.percent}%</p>
+                <p className="text-xl font-bold text-ink">{progress.percent}%</p>
               </div>
               <p className="text-xs text-muted">Estimated completion {estimatedCompletion()}</p>
             </div>
@@ -1018,7 +1018,7 @@ function ConfigSelect({
     <label className="block">
       <span className="mb-1 block text-xs font-bold text-muted">{label}</span>
       <select
-        className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel outline-none focus:border-accent"
+        className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel outline-none focus:border-accent"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -1080,7 +1080,7 @@ function SummaryRow({
     <div className="rounded-md border border-border p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className={`${success ? "bg-success-soft text-success" : "bg-accent-soft text-accent"} grid h-10 w-10 shrink-0 place-items-center rounded-md`}>
+          <span className={`${success ? "bg-success-soft text-success" : "bg-accent-soft text-accent"} grid h-9 w-9 shrink-0 place-items-center rounded-md`}>
             <Icon className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
@@ -1116,7 +1116,7 @@ function SummaryMetric({
   }[tone];
   return (
     <div className="flex items-center gap-3 rounded-md border border-border p-3">
-      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${toneClass}`}>
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${toneClass}`}>
         <Icon className="h-5 w-5" />
       </span>
       <div>
@@ -1141,7 +1141,7 @@ function MiniStat({ detail, label, value }: { detail: string; label: string; val
   return (
     <div className="rounded-md border border-border p-3">
       <p className="text-sm text-muted">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
+      <p className="mt-2 text-xl font-bold text-ink">{value}</p>
       <p className="mt-1 text-xs text-muted">{detail}</p>
     </div>
   );
@@ -1168,7 +1168,7 @@ function OutputTag({ label }: { label: string }) {
         ? Layers3
         : FileText;
   return (
-    <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-ink">
+    <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-ink">
       <Icon className="h-4 w-4 text-muted" /> {label}
     </span>
   );

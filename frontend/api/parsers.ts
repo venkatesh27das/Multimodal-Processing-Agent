@@ -1,5 +1,4 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 export type ParserStatus = "healthy" | "active" | "degraded" | "warning" | "disabled";
 
@@ -130,8 +129,6 @@ async function optionalRequest<T>(path: string): Promise<T | null> {
 
 export const parsersApi = {
   async listParsers(filters?: Partial<ParserFilters>): Promise<ParserDefinition[]> {
-    if (USE_MOCKS) return mockParsers;
-
     const [registry, metrics] = await Promise.all([
       request<BackendParserDefinition[]>(`/parser-registry${buildParsersQuery(filters)}`).catch(async (error) => {
         if (error instanceof UnsupportedParserActionError) {
@@ -145,8 +142,6 @@ export const parsersApi = {
   },
 
   async getParser(parserId: string): Promise<ParserDefinition> {
-    if (USE_MOCKS) return mockParsers.find((parser) => parser.parserId === parserId) ?? mockParsers[0];
-
     const [parser, metrics] = await Promise.all([
       request<BackendParserDefinition>(`/parser-registry/${parserId}`).catch(async (error) => {
         if (error instanceof UnsupportedParserActionError) {
@@ -160,8 +155,6 @@ export const parsersApi = {
   },
 
   async getParserMetrics(): Promise<ParserMetrics[]> {
-    if (USE_MOCKS) return mockMetrics;
-
     const metrics =
       await optionalRequest<BackendParserMetric[]>("/parsers/metrics") ??
       await optionalRequest<BackendParserMetric[]>("/observability/parser-usage") ??
@@ -170,8 +163,6 @@ export const parsersApi = {
   },
 
   async getRoutingPolicySummary(parsers: ParserDefinition[]): Promise<RoutingPolicySummary> {
-    if (USE_MOCKS) return mockRoutingPolicy;
-
     const response = await optionalRequest<BackendRoutingPolicy>("/parsers/routing-policy");
     if (response) {
       if ("policies" in response && response.policies) return { items: response.policies };
@@ -182,8 +173,6 @@ export const parsersApi = {
   },
 
   async getParserActivity(): Promise<ParserActivity[]> {
-    if (USE_MOCKS) return mockActivity;
-
     const response = await optionalRequest<BackendActivity>("/parsers/activity");
     if (!response) return [];
     if (Array.isArray(response)) return response;
@@ -191,22 +180,18 @@ export const parsersApi = {
   },
 
   createParser(payload: Record<string, unknown>) {
-    if (USE_MOCKS) return Promise.resolve(mockParsers[0]);
     return request<ParserDefinition>("/parsers", { method: "POST", body: JSON.stringify(payload) });
   },
 
   updateParser(parserId: string, payload: Record<string, unknown>) {
-    if (USE_MOCKS) return Promise.resolve(mockParsers.find((parser) => parser.parserId === parserId) ?? mockParsers[0]);
     return request<ParserDefinition>(`/parsers/${parserId}`, { method: "PATCH", body: JSON.stringify(payload) });
   },
 
   benchmarkParser(parserId: string) {
-    if (USE_MOCKS) return Promise.resolve({ parserId, status: "queued" });
     return request<Record<string, unknown>>(`/parsers/${parserId}/benchmark`, { method: "POST" });
   },
 
   benchmarkAll() {
-    if (USE_MOCKS) return Promise.resolve({ status: "queued" });
     return request<Record<string, unknown>>("/parsers/benchmark", { method: "POST" });
   },
 };
@@ -352,20 +337,3 @@ function formatRelativeTime(value: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
-
-const mockMetrics: ParserMetrics[] = [
-  { parserId: "pdf_native_text", jobCount: 24, successCount: 23, errorCount: 0, fallbackAssetCount: 1, averageConfidence: 0.93, averageLatencyMs: 1200 },
-  { parserId: "mock_vlm", jobCount: 9, successCount: 8, errorCount: 1, fallbackAssetCount: 3, averageConfidence: 0.88, averageLatencyMs: 6400 },
-];
-
-const mockParsers: ParserDefinition[] = [
-  { parserId: "pdf_native_text", name: "PDF Native Text Parser", supportedFileTypes: ["pdf"], supportedModalities: ["document", "text"], provider: "Local Runtime", parserType: "deterministic", version: "0.2.0", usagePercent: 64, successRate: 0.94, avgQuality: 0.91, avgLatencyMs: 1200, costTier: "Standard", status: "healthy", deploymentMode: "local", lastUpdated: "Today", strengths: ["Fast local PDF text extraction"], weaknesses: ["Scanned PDFs need fallback"], enabled: true },
-  { parserId: "mock_vlm", name: "LM Studio VLM Parser", supportedFileTypes: ["image", "pdf"], supportedModalities: ["image", "layout"], provider: "Local Runtime", parserType: "vlm", version: "0.2.0", usagePercent: 36, successRate: 0.9, avgQuality: 0.88, avgLatencyMs: 6400, costTier: "Premium", status: "degraded", deploymentMode: "local", lastUpdated: "Today", strengths: ["Visual reasoning fallback"], weaknesses: ["Requires local VLM server"], enabled: true },
-];
-
-const mockRoutingPolicy: RoutingPolicySummary = deriveRoutingPolicy(mockParsers);
-
-const mockActivity: ParserActivity[] = [
-  { id: "mock-1", message: "PDF Native Text Parser updated to v0.2.0", timestampLabel: "Today", tone: "success" },
-  { id: "mock-2", message: "LM Studio VLM benchmark completed", timestampLabel: "Today", tone: "info" },
-];

@@ -1,7 +1,6 @@
 import { jobsApi, type Job } from "@/api/jobs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 export type DashboardSummary = {
   jobsToday: number | null;
@@ -128,8 +127,6 @@ async function optionalRequest<T>(path: string): Promise<T | null> {
 
 export const dashboardApi = {
   async getDashboardSummary(): Promise<DashboardSummary> {
-    if (USE_MOCKS) return mockDashboardSummary;
-
     const [dashboard, jobs, observability, quality] = await Promise.all([
       optionalRequest<DashboardApiResponse>("/dashboard/summary"),
       jobsApi.listJobs().catch(() => [] as Job[]),
@@ -141,22 +138,18 @@ export const dashboardApi = {
   },
 
   async getRecentJobs(limit = 6): Promise<RecentJob[]> {
-    if (USE_MOCKS) return mockRecentJobs.slice(0, limit);
-
     const jobs = await jobsApi.listJobs();
     return jobs.slice(0, limit).map(jobToRecentJob);
   },
 
   async getNeedsAttention(): Promise<NeedsAttentionSummary> {
-    if (USE_MOCKS) return mockNeedsAttention;
-
     const [jobs, observability, jobsMetrics, reviewSummary, parsers, parserMetrics] = await Promise.all([
       jobsApi.listJobs().catch(() => [] as Job[]),
       optionalRequest<ObservabilitySummary>("/observability/summary"),
       optionalRequest<JobsMetrics>("/jobs/metrics"),
       optionalRequest<ReviewSummary>("/review/summary"),
       getParsers(),
-      optionalRequest<ParserUsageMetric[]>("/parsers/metrics"),
+      optionalRequest<ParserUsageMetric[]>("/parsers/metrics").then(async (items) => items ?? await optionalRequest<ParserUsageMetric[]>("/observability/parser-usage")),
     ]);
 
     const pendingReview =
@@ -182,8 +175,6 @@ export const dashboardApi = {
   },
 
   async getSystemInsights(): Promise<SystemInsights> {
-    if (USE_MOCKS) return mockSystemInsights;
-
     const [jobs, observability] = await Promise.all([
       jobsApi.listJobs().catch(() => [] as Job[]),
       optionalRequest<ObservabilitySummary>("/observability/summary"),
@@ -238,10 +229,10 @@ function composeDashboardSummary({
       avgQuality: dashboard?.deltas?.avgQuality ?? null,
     },
     sparklines: {
-      jobsToday: dashboard?.sparklines?.jobsToday ?? buildSparkline(jobsToday ?? observability?.jobs.total_jobs ?? 0),
-      successRate: dashboard?.sparklines?.successRate ?? buildSparkline(percentToInt(successRate)),
-      reviewRequired: dashboard?.sparklines?.reviewRequired ?? buildSparkline(reviewRequired ?? 0),
-      avgQuality: dashboard?.sparklines?.avgQuality ?? buildSparkline(percentToInt(avgQuality)),
+      jobsToday: dashboard?.sparklines?.jobsToday ?? [],
+      successRate: dashboard?.sparklines?.successRate ?? [],
+      reviewRequired: dashboard?.sparklines?.reviewRequired ?? [],
+      avgQuality: dashboard?.sparklines?.avgQuality ?? [],
     },
   };
 }
@@ -251,9 +242,9 @@ function composeSystemInsights(jobs: Job[], observability: ObservabilitySummary 
   return {
     throughput: observability?.jobs.completed_jobs ?? jobs.filter((job) => job.status === "Completed").length,
     topFileTypes: topFileTypes(jobs),
-    recommendationsEnabled: true,
-    recommendationText: total ? "We are optimizing quality and latency automatically." : "Recommendations will appear once jobs are available.",
-    sparkline: buildSparkline(total),
+    recommendationsEnabled: total > 0,
+    recommendationText: total ? "Recommendations are based on current run quality and parser usage." : "Recommendations will appear once jobs are available.",
+    sparkline: [],
   };
 }
 
@@ -308,60 +299,3 @@ function ratio(numerator: number, denominator: number): number | null {
 function average(values: number[]): number | null {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
-
-function percentToInt(value: number | null | undefined): number {
-  return value === null || value === undefined ? 0 : Math.round(value * 100);
-}
-
-function buildSparkline(value: number): number[] {
-  const base = Math.max(1, value);
-  return [0.62, 0.74, 0.69, 0.83, 0.78, 0.91, 0.87, 1].map((multiplier) => Math.max(1, Math.round(base * multiplier)));
-}
-
-const mockDashboardSummary: DashboardSummary = {
-  jobsToday: 128,
-  successRate: 0.926,
-  reviewRequired: 23,
-  avgQuality: 0.87,
-  deltas: {
-    jobsToday: "↑ 18% vs yesterday",
-    successRate: "↑ 4.3% vs yesterday",
-    reviewRequired: "↓ 8 vs yesterday",
-    avgQuality: "↑ 2.1% vs yesterday",
-  },
-  sparklines: {
-    jobsToday: [12, 18, 16, 22, 20, 25, 23, 27, 26],
-    successRate: [8, 11, 14, 10, 16, 9, 13, 12, 15],
-    reviewRequired: [7, 9, 8, 11, 9, 10, 11, 10, 12],
-    avgQuality: [6, 7, 6, 9, 7, 8, 10, 9, 11],
-  },
-};
-
-const mockNeedsAttention: NeedsAttentionSummary = {
-  pendingReview: 23,
-  failedJobs: 7,
-  degradedParsers: 2,
-  totalAttentionItems: 32,
-};
-
-const mockRecentJobs: RecentJob[] = [
-  { id: "job-1", fileName: "Master Services Agreement.pdf", fileType: "pdf", meta: "2.4 MB • PDF", parser: "Contract Parser v3", status: "completed", statusLabel: "completed", quality: "92%", updated: "2m ago", detailHref: "/jobs/job-1" },
-  { id: "job-2", fileName: "Q2 Financial Report.docx", fileType: "docx", meta: "1.1 MB • DOCX", parser: "Financial Parser v2", status: "completed", statusLabel: "completed", quality: "89%", updated: "8m ago", detailHref: "/jobs/job-2" },
-  { id: "job-3", fileName: "Invoices_May_2024.xlsx", fileType: "xlsx", meta: "890 KB • XLSX", parser: "Invoice Extractor v2", status: "review", statusLabel: "Review Required", quality: "74%", updated: "15m ago", detailHref: "/jobs/job-3" },
-  { id: "job-4", fileName: "Customer Call - Acme Corp.mp3", fileType: "mp3", meta: "12.4 MB • MP3", parser: "Transcript & Summary v1", status: "completed", statusLabel: "completed", quality: "91%", updated: "28m ago", detailHref: "/jobs/job-4" },
-  { id: "job-5", fileName: "Research Paper - Attention.pdf", fileType: "pdf", meta: "3.2 MB • PDF", parser: "Research Paper Parser", status: "failed", statusLabel: "failed", quality: "--", updated: "1h ago", detailHref: "/jobs/job-5" },
-];
-
-const mockSystemInsights: SystemInsights = {
-  throughput: 1248,
-  topFileTypes: [
-    { type: "PDF", percent: 45 },
-    { type: "DOCX", percent: 24 },
-    { type: "PNG/JPG", percent: 15 },
-    { type: "XLSX", percent: 8 },
-    { type: "Other", percent: 8 },
-  ],
-  recommendationsEnabled: true,
-  recommendationText: "We are optimizing quality and latency automatically.",
-  sparkline: [12, 16, 15, 18, 20, 18, 17, 21, 24],
-};

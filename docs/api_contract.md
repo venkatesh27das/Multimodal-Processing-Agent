@@ -125,6 +125,20 @@ Response:
 
 Returns parse jobs in reverse creation order.
 
+### `GET /jobs/metrics`
+
+Returns lightweight job metrics used by the Home and Jobs dashboards.
+
+Response:
+
+```json
+{
+  "jobs_today": 0,
+  "failed_jobs": 0,
+  "success_rate": 0.82
+}
+```
+
 ### `GET /jobs/{job_id}`
 
 Returns a parse job.
@@ -284,6 +298,28 @@ Enables a parser definition.
 
 Disables a parser definition.
 
+### `GET /parsers/metrics`
+
+Returns parser usage metrics used by the Parsers and Home dashboards.
+
+Response:
+
+```json
+[
+  {
+    "parser_id": "html_text",
+    "execution_count": 8,
+    "job_count": 8,
+    "success_count": 8,
+    "error_count": 0,
+    "fallback_asset_count": 0,
+    "average_confidence": 0.73,
+    "average_latency_ms": 0,
+    "estimated_cost": 0
+  }
+]
+```
+
 ## Skills Registry
 
 ### `GET /skills-registry`
@@ -354,6 +390,35 @@ Response:
 ```
 
 ## Observability
+
+### `GET /dashboard/summary`
+
+Returns Home dashboard summary metrics from persisted jobs, quality, review, and observability data.
+
+Response:
+
+```json
+{
+  "jobs_today": 0,
+  "success_rate": 0.82,
+  "review_required": 3,
+  "avg_quality": 0.64
+}
+```
+
+### `GET /review/summary`
+
+Returns review summary counts used by Home and review-oriented navigation.
+
+Response:
+
+```json
+{
+  "pending_review": 3,
+  "review_required": 3,
+  "count": 3
+}
+```
 
 ### `GET /observability/summary`
 

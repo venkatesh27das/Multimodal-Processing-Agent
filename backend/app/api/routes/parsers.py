@@ -4,14 +4,22 @@ from sqlalchemy.orm import Session
 from backend.app.db.session import get_db
 from backend.app.models.domain import FileProfile
 from backend.app.schemas.domain import ParserCandidateRequest, ParserDefinitionRead
+from backend.app.schemas.observability import ParserUsageMetric
+from backend.app.services.observability import observability_service
 from backend.app.services.parser_registry import parser_registry
 
 router = APIRouter(prefix="/parser-registry")
+metrics_router = APIRouter(prefix="/parsers")
 
 
 @router.get("", response_model=list[ParserDefinitionRead])
 def list_parsers(db: Session = Depends(get_db)) -> list[ParserDefinitionRead]:
     return parser_registry.list_parsers(db)
+
+
+@metrics_router.get("/metrics", response_model=list[ParserUsageMetric])
+def get_parser_metrics(db: Session = Depends(get_db)) -> list[ParserUsageMetric]:
+    return observability_service.parser_usage(db)
 
 
 @router.post("/candidates", response_model=list[ParserDefinitionRead])

@@ -1,5 +1,4 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 export type SkillCategory = "Extraction" | "Validation" | "Post-processing" | "Publishing";
 export type SkillStatus = "active" | "disabled" | "draft";
@@ -147,8 +146,6 @@ async function optionalRequest<T>(path: string): Promise<T | null> {
 
 export const skillsApi = {
   async listSkills(filters?: Partial<SkillFilters>): Promise<SkillDefinition[]> {
-    if (USE_MOCKS) return filterSkills(mockSkills, normalizeFilters(filters));
-
     const [agentSkills, registrySkills, parsers] = await Promise.all([
       optionalRequest<BackendSkillRead[]>(`/skills${buildSkillsQuery(filters)}`),
       optionalRequest<BackendSkillDefinitionRead[]>(`/skills-registry${buildSkillsQuery(filters)}`),
@@ -162,8 +159,6 @@ export const skillsApi = {
   },
 
   async getSkill(skillId: string): Promise<SkillDetail> {
-    if (USE_MOCKS) return mockDetails[skillId] ?? toDetail(mockSkills.find((skill) => skill.skillId === skillId) ?? mockSkills[0]);
-
     const [agentSkill, registrySkill, parsers] = await Promise.all([
       optionalRequest<BackendSkillRead>(`/skills/${skillId}`),
       optionalRequest<BackendSkillDefinitionRead>(`/skills-registry/${skillId}`),
@@ -176,8 +171,6 @@ export const skillsApi = {
   },
 
   async getSkillMetrics(skills: SkillDefinition[]): Promise<SkillKpis> {
-    if (USE_MOCKS) return skillKpis(mockSkills);
-
     const metrics = await optionalRequest<BackendSkillMetrics>("/skills/metrics");
     if (!metrics) return skillKpis(skills);
     return {
@@ -190,28 +183,24 @@ export const skillsApi = {
   },
 
   async createSkill(payload: SkillMutationPayload): Promise<SkillDetail> {
-    if (USE_MOCKS) return toDetail({ ...mockSkills[0], name: payload.name, description: payload.description });
     const skill = await request<BackendSkillDefinitionRead>("/skills-registry", { method: "POST", body: JSON.stringify(payload) });
     const parsers = await getParserSummaries();
     return detailFromBackend(skill, parsers);
   },
 
   async updateSkill(skillId: string, payload: Partial<SkillMutationPayload>): Promise<SkillDetail> {
-    if (USE_MOCKS) return mockDetails[skillId] ?? toDetail(mockSkills[0]);
     const skill = await request<BackendSkillDefinitionRead>(`/skills-registry/${skillId}`, { method: "PATCH", body: JSON.stringify(payload) });
     const parsers = await getParserSummaries();
     return detailFromBackend(skill, parsers);
   },
 
   async duplicateSkill(skillId: string): Promise<SkillDetail> {
-    if (USE_MOCKS) return mockDetails[skillId] ?? toDetail(mockSkills[0]);
     const skill = await request<BackendSkillDefinitionRead>(`/skills-registry/${skillId}/duplicate`, { method: "POST", body: JSON.stringify({}) });
     const parsers = await getParserSummaries();
     return detailFromBackend(skill, parsers);
   },
 
   importSkillPack(file: File): Promise<SkillImportResponse> {
-    if (USE_MOCKS) return Promise.resolve({ imported: 1, skill_ids: [file.name] });
     const body = new FormData();
     body.append("file", file);
     return fetch(`${API_BASE_URL}/skills-registry/import`, { method: "POST", body, cache: "no-store" }).then(async (response) => {
@@ -224,7 +213,6 @@ export const skillsApi = {
   },
 
   attachSkillToWorkflow(skillId: string, payload: SkillWorkflowAttachmentPayload) {
-    if (USE_MOCKS) return Promise.resolve({ skill_id: skillId, attached: true, ...payload });
     return request<{ skill_id: string; workflow_id: string; workflow_name: string; attached: boolean }>(
       `/skills-registry/${skillId}/attach`,
       { method: "POST", body: JSON.stringify(payload) },
@@ -259,7 +247,8 @@ export function skillKpis(skills: SkillDefinition[]): SkillKpis {
   const usedSkills = skills.filter((skill) => skill.linkedParserCount > 0 || skill.runCount > 0);
   const reusablePacks = new Set(skills.flatMap((skill) => skill.tags.filter((tag) => ["pdf", "docx", "image", "audio", "table", "json"].includes(tag.toLowerCase())))).size || skills.length;
   const avgSuccess = average(skills.map((skill) => skill.successRate).filter((value): value is number => value !== null));
-  const mostUsed = [...skills].sort((a, b) => b.runCount - a.runCount)[0]?.name.split(" ")[0] ?? "--";
+  const mostUsedSkill = [...skills].sort((a, b) => b.runCount - a.runCount)[0];
+  const mostUsed = mostUsedSkill && mostUsedSkill.runCount > 0 ? mostUsedSkill.name : "--";
   return {
     totalSkills: skills.length,
     activeInWorkflows: usedSkills.length,
@@ -294,8 +283,6 @@ function skillFromBackend(skill: BackendSkillDefinitionRead, parsers: BackendPar
   const supportedTypes = skill.supported_document_types ?? [];
   const linkedParsers = inferLinkedParsers(skill, parsers);
   const category = inferCategory(skill);
-  const weeklyRuns = deterministicNumber(skill.skill_id, 180, 3200);
-  const successRate = skill.enabled === false ? null : deterministicNumber(skill.skill_id, 88, 98) / 100;
   return {
     skillId: skill.skill_id,
     name: skill.name,
@@ -303,34 +290,16 @@ function skillFromBackend(skill: BackendSkillDefinitionRead, parsers: BackendPar
     tags: unique([category, ...supportedTypes, ...(skill.post_processing_hook ? ["Hook"] : [])]).slice(0, 4),
     version: skill.version ?? "v1.0",
     status: skill.enabled === false ? "disabled" : "active",
-    runCount: weeklyRuns * 4,
-    runCountLabel: compactNumber(weeklyRuns * 4),
+    runCount: 0,
+    runCountLabel: "0 runs",
     linkedParserCount: linkedParsers.length,
     linkedParsers,
     category,
-    successRate,
-    averageDurationMs: deterministicNumber(skill.skill_id, 45, 180) * 1000,
-    weeklyRuns,
+    successRate: null,
+    averageDurationMs: null,
+    weeklyRuns: 0,
     lastUpdated: skill.updated_at ? formatDate(skill.updated_at) : "Today",
     supportedDocumentTypes: supportedTypes,
-  };
-}
-
-function toDetail(skill: SkillDefinition): SkillDetail {
-  const schema = (mockDetails[skill.skillId]?.extractionSchema ?? {}) as Record<string, unknown>;
-  const ruleCount = mockDetails[skill.skillId]?.validationRules ? Object.keys(mockDetails[skill.skillId].validationRules).length : 0;
-  return {
-    ...skill,
-    overview: `${skill.description} It normalizes extracted content into reusable workflow-ready outputs.`,
-    inputs: skill.supportedDocumentTypes.length ? `Document file (${skill.supportedDocumentTypes.map((item) => item.toUpperCase()).join(", ")})` : "Document file",
-    outputs: describeOutputs(schema),
-    exampleFields: describeExampleFields(schema),
-    workflowUsage: skill.linkedParserCount ? `Used with ${skill.linkedParserCount} linked parser${skill.linkedParserCount === 1 ? "" : "s"}` : "No workflow usage reported yet",
-    recentVersions: [`${skill.version} (Current)`],
-    extractionSchema: schema,
-    validationRules: ruleCount ? mockDetails[skill.skillId].validationRules : {},
-    examples: [],
-    postProcessingHook: null,
   };
 }
 
@@ -408,15 +377,6 @@ async function getParserSummaries(): Promise<BackendParserSummary[]> {
   return await optionalRequest<BackendParserSummary[]>("/parsers").then(async (items) => items ?? await optionalRequest<BackendParserSummary[]>("/parser-registry") ?? []);
 }
 
-function deterministicNumber(seed: string, min: number, max: number): number {
-  const hash = seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return min + (hash % (max - min + 1));
-}
-
-function compactNumber(value: number): string {
-  return value > 999 ? `${(value / 1000).toFixed(1)}k runs` : `${value} runs`;
-}
-
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Today";
@@ -430,26 +390,3 @@ function average(values: number[]): number | null {
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
-
-const mockSkills: SkillDefinition[] = [
-  {
-    skillId: "contract_parsing",
-    name: "Contract Parsing",
-    description: "Extracts clauses, parties, dates, obligations, and commercial terms.",
-    tags: ["Extraction", "pdf", "docx"],
-    version: "v2.1",
-    status: "active",
-    runCount: 2846,
-    runCountLabel: "2.8k runs",
-    linkedParserCount: 3,
-    linkedParsers: ["PDF Native Text Parser", "Tesseract OCR", "LM Studio VLM Parser"],
-    category: "Extraction",
-    successRate: 0.942,
-    averageDurationMs: 138000,
-    weeklyRuns: 711,
-    lastUpdated: "May 14, 2025",
-    supportedDocumentTypes: ["pdf", "docx"],
-  },
-];
-
-const mockDetails: Record<string, SkillDetail> = {};

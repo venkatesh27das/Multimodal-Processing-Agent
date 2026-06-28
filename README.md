@@ -1,10 +1,50 @@
 # Multimodal Processing Agent
 
-Enterprise MVP for multimodal file intake, parser selection, synchronous parsing orchestration, quality scoring, human review routing, asset publishing, skills, MCP tool wrappers, governance, audit, and observability.
+Enterprise MVP for multimodal file intake, parser selection, parsing orchestration, quality scoring, human review routing, asset publishing, skills, MCP tool wrappers, governance, audit, and observability.
 
-The MVP now includes real local parsing for HTML, DOCX, native-text PDFs, image OCR,
-and optional LM Studio VLM/embedding calls. Azure Document Intelligence and speech/video
-adapters remain placeholders.
+The project is intentionally split between deterministic enterprise controls and agentic decisioning. Deterministic code owns file registration, storage, validation, audit, and publishing. Agentic/intelligent code owns profiling, parser selection, fallback planning, skill selection, quality interpretation, and review recommendations.
+
+## What Works Today
+
+- Local upload and file registry for HTML, DOCX, PDF, and image files.
+- File profiling with modality, file type, text/scanned signals, and recommended strategy.
+- Parser registry with local parsers and placeholder managed/media adapters.
+- Parser selection, planning, synchronous execution, fallback handling, quality evaluation, and asset publishing.
+- Skills registry backed by folder-based skill packs in `backend/app/skills`.
+- Observability, audit, dashboard, jobs, parser, skill, review, and asset APIs.
+- Next.js enterprise console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
+- Compact UI density aligned to the supplied wireframes at normal browser zoom.
+
+## Current Limitations
+
+- Parsing runs synchronously; no queue worker is included yet.
+- Azure Document Intelligence, speech, and video adapters are placeholders.
+- Legacy `.doc` files are not parsed directly; convert them to DOCX or PDF.
+- OCR quality depends on the local Tesseract binary and image quality.
+- LM Studio VLM parsing depends on a local model that supports image inputs.
+- PII and restricted document detection use lightweight heuristics.
+- SQLite migrations are intentionally lightweight; production should use Alembic.
+- Human review approve/reject interactions are not fully persisted.
+- Authentication, authorization, tenant isolation, and secrets management are not implemented.
+- Global search and direct drag/drop from the Home card into a parse run are still feature work.
+
+## Repository Map
+
+```text
+backend/app/api/routes      FastAPI route modules
+backend/app/services        orchestration, profiling, selection, quality, audit, observability
+backend/app/parsers         parser adapters and parser base contracts
+backend/app/skills          folder-based skill packs
+backend/app/models          SQLAlchemy persistence models
+backend/app/schemas         Pydantic API contracts
+frontend/app                Next.js App Router screens
+frontend/api                typed frontend API clients
+frontend/components         shared UI and shell components
+docs                        architecture, API, MCP, and examples
+sample_files                local files for manual testing
+application wireframes      reference screenshots used for UI alignment
+tests                       backend unit and service tests
+```
 
 ## Local Setup
 
@@ -26,19 +66,16 @@ For local image OCR on macOS, install the system Tesseract binary:
 brew install tesseract
 ```
 
-Python parser dependencies are declared in `pyproject.toml`:
-
-- `pymupdf` for native PDF text extraction and PDF page rendering.
-- `python-docx` for DOCX paragraphs and tables.
-- `beautifulsoup4` for clean HTML text/tables/images.
-- `pillow` and `pytesseract` for local image/PDF OCR.
-- `httpx` for LM Studio OpenAI-compatible calls.
-
 Health check:
 
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
+
+API docs:
+
+- Swagger: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ### Frontend
 
@@ -48,7 +85,13 @@ npm install
 npm run dev -- --port 3000
 ```
 
-Open `http://localhost:3000` or `http://127.0.0.1:3000`.
+Open `http://localhost:3000`.
+
+The frontend defaults to `http://localhost:8000/api/v1`. Override with:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1"
+```
 
 ### Docker Compose
 
@@ -72,52 +115,33 @@ Important variables:
 - `STORAGE_DIR`: local file storage directory.
 - `MAX_UPLOAD_BYTES`: upload size limit.
 - `CORS_ORIGINS`: JSON array of allowed frontend origins.
-- `LOG_LEVEL`: backend logging level.
 - `NEXT_PUBLIC_API_BASE_URL`: frontend API base URL.
 - `TESSERACT_CMD`: optional path to the `tesseract` binary.
 - `LM_STUDIO_ENABLED`: enable local VLM parsing.
-- `LM_STUDIO_BASE_URL`: OpenAI-compatible LM Studio base URL, usually `http://localhost:1234/v1`.
-- `LM_STUDIO_VLM_MODEL`: your local VLM model, for example `google/gemma-4-12b`.
+- `LM_STUDIO_BASE_URL`: OpenAI-compatible LM Studio base URL.
+- `LM_STUDIO_VLM_MODEL`: local VLM model name.
 - `LM_STUDIO_EMBEDDING_ENABLED`: enable local embeddings.
-- `LM_STUDIO_EMBEDDING_MODEL`: your embedding model, for example `text-embedding-nomic-embed-text-v1.5`.
-
-Example local model configuration:
-
-```env
-LM_STUDIO_ENABLED=true
-LM_STUDIO_BASE_URL="http://localhost:1234/v1"
-LM_STUDIO_VLM_MODEL="google/gemma-4-12b"
-LM_STUDIO_EMBEDDING_ENABLED=true
-LM_STUDIO_EMBEDDING_MODEL="text-embedding-nomic-embed-text-v1.5"
-```
+- `LM_STUDIO_EMBEDDING_MODEL`: embedding model name.
 
 ## Local Parser Support
 
-| Input | Primary local parser | Real behavior |
-|---|---|---|
+| Input | Primary local parser | Behavior |
+| --- | --- | --- |
 | PDF with text layer | `pdf_native_text` | Extracts page text and layout blocks with PyMuPDF. |
-| Scanned PDF | `tesseract_ocr` or `mock_vlm` fallback | Renders PDF pages with PyMuPDF for local OCR/VLM. |
+| Scanned PDF | `tesseract_ocr` or `mock_vlm` fallback | Renders PDF pages for local OCR or VLM parsing. |
 | DOCX | `docx_text` | Extracts paragraphs and tables with python-docx. |
 | HTML | `html_text` | Extracts clean text, tables, and image metadata with BeautifulSoup. |
-| Image | `image_ocr` | Runs local Tesseract OCR when available; falls back to review/VLM. |
-| Local VLM | `mock_vlm` | Calls LM Studio chat completions when `LM_STUDIO_ENABLED=true`. |
-
-## Sample Files
-
-Use files in [sample_files](sample_files) for manual testing:
-
-- `invoice.html`: supported HTML invoice sample.
-- `contract.html`: supported HTML contract sample.
-- `low_confidence_image_placeholder.png.txt`: instructions for image review testing.
+| Image | `image_ocr` | Runs local Tesseract OCR when available; otherwise falls back to review/VLM paths. |
+| Local VLM | `mock_vlm` | Compatibility parser id that calls LM Studio when `LM_STUDIO_ENABLED=true`. |
 
 ## End-to-End Flow
 
-1. Upload a file from Home.
-2. Backend stores it locally, calculates checksum, and creates a `FileRecord`.
-3. File profiling detects file type, modalities, text/scanned signals, layout complexity, and recommended strategy.
+1. Upload a file through the UI or `POST /api/v1/files/upload`.
+2. Backend stores the file, calculates checksum, and creates a `FileRecord`.
+3. File profiling detects type, modality, text/scanned signals, layout complexity, and recommended strategy.
 4. Parser selector creates an explainable plan.
-5. Orchestration runs the parser, evaluates quality, optionally triggers fallback, publishes a unified parsed asset, and creates review items when confidence is low.
-6. Audit and observability endpoints expose operational signals.
+5. Orchestration runs the parser, evaluates quality, optionally triggers fallback, publishes a parsed asset, and creates review items when confidence is low.
+6. Audit and observability endpoints expose operational signals to the UI.
 
 ## API Examples
 
@@ -151,47 +175,41 @@ curl -X POST http://localhost:8000/api/v1/jobs \
   }'
 ```
 
-View observability:
+Operational checks:
 
 ```bash
+curl http://localhost:8000/api/v1/dashboard/summary
+curl http://localhost:8000/api/v1/review/summary
+curl http://localhost:8000/api/v1/jobs/metrics
+curl http://localhost:8000/api/v1/parsers/metrics
 curl http://localhost:8000/api/v1/observability/summary
-curl http://localhost:8000/api/v1/observability/parser-usage
-curl http://localhost:8000/api/v1/observability/quality
-curl http://localhost:8000/api/v1/audit/events
 ```
 
 More examples are in [docs/api_examples.md](docs/api_examples.md).
 
-## Current UI
+## Verification
 
-- Home / Upload
-- Jobs
-- Job Detail
-- Parser Registry
-- Skills Registry
-- Human Review Queue
-- Asset Viewer
-- Observability
-
-## Tests
+Backend:
 
 ```bash
 pytest
 python -m ruff check backend tests
+PYTHONPYCACHEPREFIX=/tmp/mmpa-pycache python3 -m compileall backend/app
+```
+
+Frontend:
+
+```bash
 cd frontend
 npm run typecheck
 npm run lint
 npm run build
 ```
 
-## Known Limitations
+## Handoff Docs
 
-- Parsing is synchronous for MVP ergonomics; no queue worker is included yet.
-- Azure Document Intelligence, speech, and video parser adapters are still placeholders.
-- Legacy `.doc` files are not parsed directly; convert them to DOCX/PDF first.
-- Tesseract OCR quality depends on the local binary, language packs, and image quality.
-- LM Studio VLM parsing depends on the loaded model supporting image inputs.
-- PII detection and restricted document detection are heuristic placeholders.
-- SQLite dev migrations are intentionally lightweight; production should use Alembic.
-- Review approve/reject UI is local-only until persisted review actions are implemented.
-- Authentication, authorization, tenant isolation, and secrets management are not implemented.
+- [AGENTS.md](AGENTS.md): repository rules for AI coding agents.
+- [AI_HANDOFF.md](AI_HANDOFF.md): current implementation state, known gaps, and next recommended work.
+- [Codex.md](Codex.md): original product and architecture guidance.
+- [docs/architecture.md](docs/architecture.md): system architecture details.
+- [docs/api_contract.md](docs/api_contract.md): API reference.

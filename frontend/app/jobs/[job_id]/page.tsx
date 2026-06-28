@@ -85,7 +85,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
           <div className="flex items-center gap-3">
             <FileTypeIcon type={detail.file?.file_type ?? "pdf"} />
             <div>
-              <h2 className="text-2xl font-bold tracking-[-0.02em] text-ink">{fileName}</h2>
+              <h2 className="text-xl font-bold text-ink">{fileName}</h2>
               <p className="mt-1 text-sm text-muted">
                 {(detail.file?.file_type ?? "PDF").toUpperCase()} · {formatBytes(detail.file?.size_bytes ?? 2_400_000)} · Uploaded Mar 24, 2025 10:14 AM
               </p>
@@ -261,7 +261,7 @@ function HeroMetric({ detail, icon: Icon, label, tone, value }: { detail: string
   return (
     <Card className="min-w-[220px] p-4">
       <div className="flex items-center gap-3">
-        <span className={`grid h-10 w-10 place-items-center rounded-md ${classes[tone]}`}><Icon className="h-5 w-5" /></span>
+        <span className={`grid h-9 w-9 place-items-center rounded-md ${classes[tone]}`}><Icon className="h-4 w-4" /></span>
         <div>
           <p className="text-xs font-bold text-muted">{label}</p>
           <p className="text-lg font-bold text-ink">{value}</p>

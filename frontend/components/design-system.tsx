@@ -40,9 +40,9 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-4">
+    <div className="mb-3 flex items-start justify-between gap-3">
       <div>
-        <h2 className="text-2xl font-bold tracking-[-0.02em] text-ink">{title}</h2>
+        <h2 className="text-xl font-bold text-ink">{title}</h2>
         {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
@@ -83,7 +83,7 @@ export function ActionButton({
   return (
     <button
       className={clsx(
-        "inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60",
         variant === "primary" && "bg-accent text-white shadow-panel hover:bg-accent-strong",
         variant === "secondary" && "border border-border bg-white text-ink shadow-panel hover:bg-surface",
         variant === "ghost" && "text-accent hover:bg-accent-soft",
@@ -122,17 +122,17 @@ export function MetricCard({
   };
   const isNegativeDelta = delta?.trim().startsWith("↓");
   return (
-    <Card className="flex min-h-[86px] items-center justify-between gap-3 px-4 py-3">
+    <Card className="flex min-h-[74px] items-center justify-between gap-3 px-3 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
-        <div className={clsx("grid h-11 w-11 shrink-0 place-items-center rounded-lg", toneClasses[tone])}>
-          {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
+        <div className={clsx("grid h-9 w-9 shrink-0 place-items-center rounded-lg", toneClasses[tone])}>
+          {Icon ? <Icon className="h-4 w-4" aria-hidden="true" /> : null}
         </div>
         <div className="min-w-0">
           <p className="flex items-center gap-1 text-xs font-bold leading-tight text-muted">
             <span>{label}</span>
             <Info className="h-3 w-3 shrink-0 text-subtle" aria-hidden="true" />
           </p>
-          <p className="mt-1 text-[23px] font-bold leading-none tracking-[-0.02em] text-ink">{value}</p>
+          <p className="mt-1 text-[20px] font-bold leading-none text-ink">{value}</p>
           {delta ? (
             <p className={clsx("mt-2 text-xs font-semibold", isNegativeDelta ? "text-danger" : "text-success")}>
               {delta}
@@ -163,7 +163,7 @@ export function StatusPill({
     queued: "border-slate-200 bg-surface text-muted",
   };
   return (
-    <span className={clsx("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-bold", classes[status])}>
+    <span className={clsx("inline-flex h-5 items-center gap-1 rounded-full border px-1.5 text-xs font-bold", classes[status])}>
       {["healthy", "completed", "active"].includes(status) ? <Check className="h-3 w-3" /> : null}
       {children ?? status}
     </span>
@@ -186,7 +186,7 @@ export function Tag({
     purple: "border-violet-200 bg-purple-soft text-purple",
   };
   return (
-    <span className={clsx("inline-flex h-6 items-center rounded-md border px-2 text-xs font-semibold", classes[tone])}>
+    <span className={clsx("inline-flex h-5 items-center rounded-md border px-1.5 text-xs font-semibold", classes[tone])}>
       {children}
     </span>
   );
@@ -203,11 +203,11 @@ export function DataTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm" style={{ minWidth }}>
+      <table className="w-full text-left text-[13px]" style={{ minWidth }}>
         <thead className="bg-surface text-[11px] uppercase tracking-wide text-muted">
           <tr>
             {columns.map((column) => (
-              <th key={column} className="border-b border-border px-4 py-3 font-bold">
+              <th key={column} className="border-b border-border px-3 py-2.5 font-bold">
                 {column}
               </th>
             ))}
@@ -228,7 +228,7 @@ export function SearchFilterBar({
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3">
-      <div className="flex h-11 min-w-[300px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
+      <div className="flex h-10 min-w-[280px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
         <Search className="h-4 w-4" aria-hidden="true" />
         <span>{placeholder}</span>
       </div>
@@ -247,9 +247,9 @@ export function EmptyState({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-      <div className="grid h-12 w-12 place-items-center rounded-xl bg-white text-muted shadow-panel">
-        <Icon className="h-6 w-6" aria-hidden="true" />
+    <div className="flex min-h-[150px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-surface p-6 text-center">
+      <div className="grid h-10 w-10 place-items-center rounded-lg bg-white text-muted shadow-panel">
+        <Icon className="h-5 w-5" aria-hidden="true" />
       </div>
       <h3 className="mt-3 text-base font-bold text-ink">{title}</h3>
       {description ? <p className="mt-1 max-w-md text-sm text-muted">{description}</p> : null}
@@ -282,7 +282,7 @@ export function SelectField({
   return (
     <label className="block">
       {label ? <span className="mb-1 block text-xs font-bold text-muted">{label}</span> : null}
-      <div className="flex h-11 min-w-[170px] items-center justify-between rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel">
+      <div className="flex h-10 min-w-[160px] items-center justify-between rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel">
         <span>{value}</span>
         <ChevronDown className="h-4 w-4 text-muted" aria-hidden="true" />
       </div>
@@ -297,8 +297,8 @@ export function SelectField({
 
 export function Toggle({ checked = false }: { checked?: boolean }) {
   return (
-    <span className={clsx("inline-flex h-6 w-10 items-center rounded-full p-0.5", checked ? "bg-accent" : "bg-slate-300")}>
-      <span className={clsx("h-5 w-5 rounded-full bg-white shadow transition", checked ? "translate-x-4" : "translate-x-0")} />
+    <span className={clsx("inline-flex h-5 w-9 items-center rounded-full p-0.5", checked ? "bg-accent" : "bg-slate-300")}>
+      <span className={clsx("h-4 w-4 rounded-full bg-white shadow transition", checked ? "translate-x-4" : "translate-x-0")} />
     </span>
   );
 }

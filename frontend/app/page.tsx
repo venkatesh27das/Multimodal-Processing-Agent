@@ -131,10 +131,10 @@ export default function HomePage() {
 function KpiRow({ summary }: { summary: DashboardSummary }) {
   return (
     <>
-      <MetricCard icon={FileText} label="Runs Today" value={formatCount(summary.jobsToday)} delta={summary.deltas.jobsToday ?? undefined} tone="accent" data={summary.sparklines.jobsToday} />
-      <MetricCard icon={CheckCircle2} label="Success Rate" value={formatPercent(summary.successRate)} delta={summary.deltas.successRate ?? undefined} tone="success" data={summary.sparklines.successRate} />
-      <MetricCard icon={AlertTriangle} label="Review Required" value={formatCount(summary.reviewRequired)} delta={summary.deltas.reviewRequired ?? undefined} tone="warning" data={summary.sparklines.reviewRequired} />
-      <MetricCard icon={Star} label="Avg Quality" value={formatPercent(summary.avgQuality)} delta={summary.deltas.avgQuality ?? undefined} tone="info" data={summary.sparklines.avgQuality} />
+      <MetricCard icon={FileText} label="Runs Today" value={formatCount(summary.jobsToday)} delta={summary.deltas.jobsToday ?? undefined} tone="accent" data={seriesOrUndefined(summary.sparklines.jobsToday)} />
+      <MetricCard icon={CheckCircle2} label="Success Rate" value={formatPercent(summary.successRate)} delta={summary.deltas.successRate ?? undefined} tone="success" data={seriesOrUndefined(summary.sparklines.successRate)} />
+      <MetricCard icon={AlertTriangle} label="Review Required" value={formatCount(summary.reviewRequired)} delta={summary.deltas.reviewRequired ?? undefined} tone="warning" data={seriesOrUndefined(summary.sparklines.reviewRequired)} />
+      <MetricCard icon={Star} label="Avg Quality" value={formatPercent(summary.avgQuality)} delta={summary.deltas.avgQuality ?? undefined} tone="info" data={seriesOrUndefined(summary.sparklines.avgQuality)} />
     </>
   );
 }
@@ -169,7 +169,7 @@ function NeedsAttentionCard({
           items.map(({ title, description, count, icon: Icon, className, href }) => (
             <Link key={title} className="flex min-h-[70px] items-center justify-between rounded-md border border-border p-3 hover:bg-surface" href={href}>
               <div className="flex items-center gap-3">
-                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${className}`}>
+                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${className}`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -200,7 +200,7 @@ function RecentJobsCard({
 }) {
   return (
     <Card>
-      <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <SectionHeader title="Recent Runs" />
         <Link href="/run-monitor"><ArrowLink>View all runs</ArrowLink></Link>
       </div>
@@ -270,9 +270,9 @@ function SystemInsightsCard({
           <div className="mt-5 grid grid-cols-[1fr_1px_1fr] gap-4">
             <div>
               <p className="text-xs font-bold text-muted">Throughput</p>
-              <p className="mt-3 text-2xl font-bold text-ink">{formatCount(insights.throughput)}</p>
+              <p className="mt-2 text-xl font-bold text-ink">{formatCount(insights.throughput)}</p>
               <p className="text-xs text-muted">runs processed</p>
-              <div className="mt-4"><Sparkline data={insights.sparkline} tone="info" /></div>
+              {insights.sparkline.length ? <div className="mt-4"><Sparkline data={insights.sparkline} tone="info" /></div> : null}
               <FileTypeDonut items={insights.topFileTypes} />
             </div>
             <div className="bg-border" />
@@ -289,7 +289,7 @@ function SystemInsightsCard({
             </div>
           </div>
           <div className="mt-4 rounded-md border border-emerald-200 bg-success-soft p-3 text-sm text-emerald-800">
-            <span className="font-bold">System recommendations enabled</span>
+            <span className="font-bold">{insights.recommendationsEnabled ? "System recommendations enabled" : "System recommendations pending"}</span>
             <p className="text-xs">{insights.recommendationText}</p>
           </div>
         </>
@@ -376,6 +376,10 @@ function formatCount(value: number | null): string {
 
 function formatPercent(value: number | null): string {
   return value === null ? "--" : `${Math.round(value * 1000) / 10}%`;
+}
+
+function seriesOrUndefined(values: number[]): number[] | undefined {
+  return values.length ? values : undefined;
 }
 
 function statusTone(status: RecentJob["status"]): "completed" | "review" | "failed" | "queued" {
