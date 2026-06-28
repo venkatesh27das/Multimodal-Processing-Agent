@@ -14,7 +14,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] border-r border-border bg-white lg:flex lg:flex-col">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-border bg-white lg:flex lg:flex-col 2xl:w-[260px]">
       <div className="flex h-[74px] items-center gap-3 px-5">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white shadow-panel">
           <Hexagon className="h-5 w-5 fill-current" aria-hidden="true" />
@@ -23,7 +23,7 @@ export function Sidebar() {
           <p className="truncate text-[17px] font-bold tracking-[-0.01em] text-ink">Multimodal Agent</p>
         </div>
       </div>
-      <nav className="flex-1 space-y-6 px-3 py-3" aria-label="Primary navigation">
+      <nav className="flex-1 space-y-5 px-3 py-3" aria-label="Primary navigation">
         <NavGroup items={groups.main} pathname={pathname} />
         <div className="mx-1 border-t border-border" />
         <NavGroup items={groups.admin} pathname={pathname} />

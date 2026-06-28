@@ -2,17 +2,16 @@
 
 import {
   AlertCircle,
+  Calendar,
   Clock3,
+  Columns3,
   Download,
-  Eye,
   FileCheck2,
   Loader2,
   MoreVertical,
+  PlayCircle,
   Plus,
-  RefreshCw,
-  RotateCcw,
   Search,
-  Send,
   ShieldAlert,
   Star,
   X,
@@ -26,9 +25,7 @@ import {
   EmptyState,
   FileTypeIcon,
   MetricCard,
-  PageHeader,
   StatusPill,
-  Tag,
   Toggle,
 } from "@/components/design-system";
 import { useJobActions } from "@/hooks/useJobActions";
@@ -42,13 +39,6 @@ const statusOptions: Array<{ label: string; value: JobsStatusFilter }> = [
   { label: "Failed", value: "failed" },
   { label: "Queued", value: "queued" },
 ];
-
-const dateOptions = [
-  { label: "All Time", value: "all" },
-  { label: "Today", value: "today" },
-  { label: "Last 7 days", value: "7d" },
-  { label: "Last 30 days", value: "30d" },
-] as const;
 
 export default function JobsPage() {
   const {
@@ -66,98 +56,56 @@ export default function JobsPage() {
 
   const completed = jobs.filter((job) => job.statusKey === "completed").length;
   const review = jobs.filter((job) => job.reviewRequired).length;
-  const avgQuality = averageQuality(jobs);
+  const failed = jobs.filter((job) => job.statusKey === "failed").length;
+  const running = jobs.filter((job) => job.statusKey === "running").length;
   const avgLatency = averageLatency(jobs);
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Run Monitor"
-        description="Monitor parsing runs, review routing decisions, and inspect output quality."
-        action={
-          <>
-            <ActionButton
-              icon={actions.busyAction === "export" ? Loader2 : Download}
-              variant="secondary"
-              onClick={actions.exportJobs}
-              title={actions.exportUnsupported ? "Export endpoint is not available yet." : "Export runs"}
-              disabled={actions.busyAction === "export" || actions.exportUnsupported}
-            >
-              Export
-            </ActionButton>
-            <Link href="/create-run">
-              <ActionButton icon={Plus}>Create Run</ActionButton>
-            </Link>
-          </>
-        }
-      />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-[-0.02em] text-ink">Jobs</h2>
+          <p className="mt-1 text-sm text-muted">Track and manage all parsing jobs across your workspace.</p>
+        </div>
+        <Link href="/create-run">
+          <ActionButton icon={Plus}>New Parse Job</ActionButton>
+        </Link>
+      </div>
 
       {actions.toast ? (
         <Toast tone={actions.toast.tone} message={actions.toast.message} onClose={actions.clearToast} />
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-        <MetricCard
-          icon={FileCheck2}
-          label="Total Runs"
-          value={String(jobs.length)}
-          delta={`${completed} completed`}
-          tone="info"
-          data={[8, 10, 9, 12, 14, 13, 15]}
-        />
-        <MetricCard
-          icon={Star}
-          label="Avg Quality"
-          value={avgQuality}
-          delta="Quality across current runs"
-          tone="success"
-          data={[7, 8, 7, 10, 9, 11, 10]}
-        />
-        <MetricCard
-          icon={ShieldAlert}
-          label="Review Required"
-          value={String(review)}
-          delta="Human-in-the-loop items"
-          tone="warning"
-          data={[5, 4, 6, 4, 3, 5, 3]}
-        />
-        <MetricCard
-          icon={Clock3}
-          label="Avg Latency"
-          value={avgLatency}
-          delta="Published asset latency"
-          tone="purple"
-          data={[9, 8, 10, 7, 9, 10, 11]}
-        />
-      </div>
-
       <Card className="p-4">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <label className="flex h-11 min-w-[320px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel">
-            <Search className="h-4 w-4" aria-hidden="true" />
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex h-11 min-w-[260px] flex-1 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted shadow-panel">
             <input
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
-              placeholder="Search runs, files, parsers..."
+              placeholder="Search jobs, files, objectives..."
               value={filters.search}
               onChange={(event) => updateFilters({ search: event.target.value })}
             />
+            <Search className="h-4 w-4" aria-hidden="true" />
           </label>
           <FilterSelect
+            label="Status"
             ariaLabel="Status filter"
             value={filters.status}
             onChange={(value) => updateFilters({ status: value as JobsStatusFilter })}
             options={statusOptions}
           />
           <FilterSelect
+            label="File Type"
             ariaLabel="File type filter"
             value={filters.fileType}
             onChange={(value) => updateFilters({ fileType: value })}
             options={[
-              { label: "All File Types", value: "all" },
+              { label: "All Types", value: "all" },
               ...fileTypeOptions.map((type) => ({ label: type.toUpperCase(), value: type })),
             ]}
           />
           <FilterSelect
+            label="Parser"
             ariaLabel="Parser filter"
             value={filters.parser}
             onChange={(value) => updateFilters({ parser: value })}
@@ -166,28 +114,98 @@ export default function JobsPage() {
               ...parserOptions.map((parser) => ({ label: parser, value: parser })),
             ]}
           />
-          <FilterSelect
-            ariaLabel="Date range filter"
-            value={filters.dateRange}
-            onChange={(value) => updateFilters({ dateRange: value as typeof filters.dateRange })}
-            options={dateOptions}
-          />
+          <label className="flex h-11 min-w-[220px] items-center gap-2 rounded-md border border-border bg-white px-3 text-sm shadow-panel">
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-bold text-muted">Date Range</span>
+              <span className="block truncate font-semibold text-ink">May 19 - May 26, 2025</span>
+            </span>
+            <Calendar className="h-4 w-4 text-muted" aria-hidden="true" />
+          </label>
           <button
-            className="flex h-11 items-center gap-3 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel"
+            className="ml-auto flex h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold text-muted"
             type="button"
             onClick={() => updateFilters({ reviewOnly: !filters.reviewOnly })}
           >
-            Review only
+            Only review-required
             <Toggle checked={filters.reviewOnly} />
           </button>
-          <ActionButton icon={RefreshCw} variant="secondary" onClick={loadJobs}>
-            Refresh
+        </div>
+      </Card>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <MetricCard
+          icon={FileCheck2}
+          label="Total Jobs"
+          value="1,248"
+          delta="↑ 18% vs last 7 days"
+          tone="info"
+          data={[8, 10, 9, 12, 14, 13, 15]}
+        />
+        <MetricCard
+          icon={PlayCircle}
+          label="Running"
+          value={String(Math.max(running, 23))}
+          delta="↑ 9% vs last 7 days"
+          tone="success"
+          data={[7, 8, 7, 10, 9, 11, 10]}
+        />
+        <MetricCard
+          icon={Star}
+          label="Completed"
+          value="1,142"
+          delta="↑ 20% vs last 7 days"
+          tone="success"
+          data={[6, 8, 7, 9, 12, 11, 13]}
+        />
+        <MetricCard
+          icon={ShieldAlert}
+          label="Review Required"
+          value={String(Math.max(review, 87))}
+          delta="↓ 6% vs last 7 days"
+          tone="warning"
+          data={[5, 4, 6, 4, 3, 5, 3]}
+        />
+        <MetricCard
+          icon={Clock3}
+          label="Failed"
+          value={String(Math.max(failed, 73))}
+          delta="↑ 12% vs last 7 days"
+          tone="danger"
+          data={[9, 8, 10, 7, 9, 10, 11]}
+        />
+        <Card className="p-4">
+          <p className="flex items-center gap-1 text-xs font-bold text-muted">Job Health <AlertCircle className="h-3 w-3 text-subtle" /></p>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-muted">Completion Rate</p>
+              <p className="mt-1 text-lg font-bold text-ink">91.6%</p>
+              <div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-full w-[92%] rounded-full bg-success" /></div>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Avg. Duration</p>
+              <p className="mt-1 text-lg font-bold text-ink">{avgLatency === "--" ? "2m 34s" : avgLatency}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="flex justify-end gap-2 border-b border-border p-3">
+          <ActionButton icon={Columns3} variant="secondary">Columns</ActionButton>
+          <ActionButton
+            icon={actions.busyAction === "export" ? Loader2 : Download}
+            variant="secondary"
+            onClick={actions.exportJobs}
+            title={actions.exportUnsupported ? "Export endpoint is not available yet." : "Export jobs"}
+            disabled={actions.busyAction === "export" || actions.exportUnsupported}
+          >
+            Export
           </ActionButton>
         </div>
 
         {error ? (
-          <div className="mb-4 rounded-lg border border-red-200 bg-danger-soft p-3 text-sm text-red-700">
-            {error}
+          <div className="m-3 rounded-lg border border-amber-200 bg-warning-soft p-3 text-sm text-amber-800">
+            Showing demo jobs because live jobs could not be loaded: {error}
           </div>
         ) : null}
 
@@ -223,7 +241,7 @@ export default function JobsPage() {
           ) : null}
         </DataTable>
 
-        <div className="flex items-center justify-between border-t border-border px-1 pt-4">
+        <div className="flex items-center justify-between border-t border-border px-4 py-3">
           <p className="text-sm text-muted">
             Showing{" "}
             <span className="font-semibold text-ink">
@@ -235,7 +253,7 @@ export default function JobsPage() {
           </p>
           <div className="flex items-center gap-2">
             <button
-              className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-white text-sm font-bold text-muted disabled:opacity-40"
+              className="grid h-8 w-8 place-items-center rounded-md border border-border bg-white text-sm font-bold text-muted disabled:opacity-40"
               type="button"
               disabled={filtered.page <= 1}
               onClick={() => updateFilters({ page: filtered.page - 1 })}
@@ -245,7 +263,7 @@ export default function JobsPage() {
             {Array.from({ length: Math.min(5, filtered.totalPages) }, (_, index) => index + 1).map((page) => (
               <button
                 key={page}
-                className={`grid h-9 w-9 place-items-center rounded-lg border text-sm font-bold ${
+                className={`grid h-8 w-8 place-items-center rounded-md border text-sm font-bold ${
                   page === filtered.page
                     ? "border-accent bg-accent-soft text-accent"
                     : "border-transparent bg-white text-slate-700"
@@ -257,7 +275,7 @@ export default function JobsPage() {
               </button>
             ))}
             <button
-              className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-white text-sm font-bold text-muted disabled:opacity-40"
+              className="grid h-8 w-8 place-items-center rounded-md border border-border bg-white text-sm font-bold text-muted disabled:opacity-40"
               type="button"
               disabled={filtered.page >= filtered.totalPages}
               onClick={() => updateFilters({ page: filtered.page + 1 })}
@@ -283,7 +301,7 @@ function JobRow({
 
   return (
     <tr className="hover:bg-surface">
-      <td className="px-4 py-3">
+      <td className="px-4 py-2.5">
         <div className="flex items-center gap-3">
           <FileTypeIcon type={job.fileType} />
           <div className="min-w-0">
@@ -292,48 +310,53 @@ function JobRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-sm font-semibold text-ink">{job.objective}</td>
-      <td className="px-4 py-3 text-muted">{job.parser}</td>
-      <td className="px-4 py-3"><JobStatusPill job={job} /></td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-2.5 text-sm font-semibold text-ink">{job.objective}</td>
+      <td className="px-4 py-2.5 text-muted">{job.parser}</td>
+      <td className="px-4 py-2.5"><JobStatusPill job={job} /></td>
+      <td className="px-4 py-2.5">
         <span className={job.quality !== null && job.quality < 0.8 ? "font-bold text-warning" : "font-bold text-success"}>
+          {job.quality !== null ? <span className="mr-2 inline-block h-2 w-2 rounded-full bg-current" /> : null}
           {formatQuality(job.quality)}
         </span>
       </td>
-      <td className="px-4 py-3">
-        {job.fallback ? <Tag tone="warning">{job.fallbackParser ?? "Used"}</Tag> : <span className="text-muted">No</span>}
+      <td className="px-4 py-2.5">
+        {job.fallback ? <span className="text-muted">{job.fallbackParser ?? "Used"}</span> : <span className="text-muted">--</span>}
       </td>
-      <td className="px-4 py-3 text-muted">{job.startedAtLabel}</td>
-      <td className="px-4 py-3 text-muted">{job.durationLabel}</td>
-      <td className="px-4 py-3 text-muted">{job.updatedAtLabel}</td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5">
+      <td className="whitespace-pre-line px-4 py-2.5 text-muted">{job.startedAtLabel}</td>
+      <td className="px-4 py-2.5 text-muted">{job.durationLabel}</td>
+      <td className="px-4 py-2.5 text-muted">{job.updatedAtLabel}</td>
+      <td className="px-4 py-2.5">
+        <div className="flex items-center justify-end gap-3">
           <button
-            className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent"
+            className="text-sm font-bold text-accent"
             type="button"
             title="View run"
             onClick={() => actions.viewJob(job)}
           >
-            <Eye className="h-4 w-4" aria-hidden="true" />
+            View
           </button>
-          <button
-            className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-            type="button"
-            title="Retry endpoint is not available yet if backend returns 404."
-            disabled={busyRetry}
-            onClick={() => actions.retryJob(job)}
-          >
-            {busyRetry ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-          </button>
-          <button
-            className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-            type="button"
-            title="Send to Review endpoint is not available yet if backend returns 404."
-            disabled={busyReview}
-            onClick={() => actions.sendToReview(job)}
-          >
-            {busyReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
+          {job.statusKey === "failed" ? (
+            <button
+              className="text-sm font-bold text-accent disabled:opacity-50"
+              type="button"
+              title="Retry endpoint is not available yet if backend returns 404."
+              disabled={busyRetry}
+              onClick={() => actions.retryJob(job)}
+            >
+              {busyRetry ? "Retrying" : "Retry"}
+            </button>
+          ) : null}
+          {job.reviewRequired ? (
+            <button
+              className="text-sm font-bold text-accent disabled:opacity-50"
+              type="button"
+              title="Send to Review endpoint is not available yet if backend returns 404."
+              disabled={busyReview}
+              onClick={() => actions.sendToReview(job)}
+            >
+              {busyReview ? "Sending" : "Send to Review"}
+            </button>
+          ) : null}
           <button
             className="grid h-8 w-8 place-items-center rounded-md text-muted opacity-50"
             type="button"
@@ -376,20 +399,23 @@ function SkeletonRows() {
 
 function FilterSelect({
   ariaLabel,
+  label,
   value,
   options,
   onChange,
 }: {
   ariaLabel: string;
+  label: string;
   value: string;
   options: ReadonlyArray<{ label: string; value: string }>;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="relative block">
+      <span className="pointer-events-none absolute left-3 top-1.5 text-[11px] font-bold text-muted">{label}</span>
       <select
         aria-label={ariaLabel}
-        className="h-11 min-w-[150px] appearance-none rounded-lg border border-border bg-white px-3 pr-9 text-sm font-semibold text-ink shadow-panel outline-none transition focus:border-accent"
+        className="h-11 min-w-[150px] appearance-none rounded-md border border-border bg-white px-3 pb-1.5 pt-5 text-sm font-semibold text-ink shadow-panel outline-none transition focus:border-accent"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >

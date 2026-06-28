@@ -4,8 +4,12 @@ import Link from "next/link";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronRight,
+  CloudUpload,
   FileText,
   Gauge,
+  LockKeyhole,
+  MoreVertical,
   Network,
   Play,
   ShieldCheck,
@@ -53,7 +57,7 @@ export default function HomePage() {
     <div className="space-y-5">
       {dashboard.error ? <ErrorNotice message={dashboard.error} /> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {dashboard.loading || !dashboard.summary ? (
           <>
             <MetricSkeleton />
@@ -66,40 +70,48 @@ export default function HomePage() {
         )}
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[1.1fr_1.1fr_0.9fr]">
-        <Card className="border-accent/50 p-5">
+      <div className="grid gap-3 xl:grid-cols-[minmax(330px,1fr)_minmax(360px,1.12fr)_minmax(230px,0.74fr)] 2xl:grid-cols-[1.1fr_1.1fr_0.9fr]">
+        <Card className="border-accent/60 p-4">
           <SectionHeader title="Start Parsing" description="Upload any document, image, audio, or video to extract structured insights." />
-          <Link href="/create-run" className="mt-5 flex min-h-[158px] flex-col items-center justify-center rounded-lg border border-dashed border-accent/50 bg-orange-50/40 p-5 text-center">
-            <FileText className="h-8 w-8 text-accent" aria-hidden="true" />
+          <Link href="/create-run" className="mt-4 flex min-h-[148px] flex-col items-center justify-center rounded-lg border border-dashed border-accent/60 bg-orange-50/30 p-5 text-center">
+            <CloudUpload className="h-8 w-8 text-accent" aria-hidden="true" />
             <p className="mt-3 text-sm font-bold text-ink">Drag & drop files here</p>
             <p className="mt-1 text-xs text-muted">or click to browse</p>
             <p className="mt-3 text-xs text-muted">Supports PDF, DOCX, TXT, PNG, JPG, MP3, MP4 and more</p>
+            <div className="mt-4 flex w-full max-w-md items-center justify-center gap-3 text-[11px] text-muted">
+              <span className="h-px flex-1 bg-border" />
+              <span className="inline-flex items-center gap-1">
+                <LockKeyhole className="h-3 w-3" aria-hidden="true" />
+                Files are encrypted and processed securely
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
           </Link>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-3">
             <Link href="/create-run">
-              <ActionButton className="w-full" icon={Play}>Start Parsing</ActionButton>
+              <ActionButton className="w-full whitespace-nowrap text-xs 2xl:text-sm" icon={Play}>Start Parsing</ActionButton>
             </Link>
             <Link href="/create-run?template=general">
-              <ActionButton className="w-full" variant="secondary">Use Template</ActionButton>
+              <ActionButton className="w-full whitespace-nowrap text-xs 2xl:text-sm" variant="secondary">Use Template</ActionButton>
             </Link>
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Quick Templates" description="Jumpstart common parsing workflows." />
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
             {quickTemplates.map(({ title, description, icon: Icon, className, href }) => (
-              <Link key={title} className="flex items-center justify-between rounded-lg border border-border bg-white p-3 text-left hover:bg-surface" href={href}>
+              <Link key={title} className="flex min-h-[64px] items-center justify-between rounded-md border border-border bg-white px-3 py-2.5 text-left hover:bg-surface" href={href}>
                 <span className="flex items-center gap-3">
-                  <span className={`grid h-9 w-9 place-items-center rounded-lg ${className}`}>
+                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${className}`}>
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
-                  <span>
-                    <span className="block text-sm font-bold text-ink">{title}</span>
-                    <span className="block text-xs text-muted">{description}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-bold leading-tight text-ink 2xl:text-sm">{title}</span>
+                    <span className="block text-[11px] leading-tight text-muted 2xl:text-xs">{description}</span>
                   </span>
                 </span>
-                <span className="text-lg text-muted">›</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
               </Link>
             ))}
           </div>
@@ -108,7 +120,7 @@ export default function HomePage() {
         <NeedsAttentionCard summary={attention.summary} loading={attention.loading} error={attention.error} />
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[1fr_380px]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <RecentJobsCard jobs={recentJobs.jobs} loading={recentJobs.loading} error={recentJobs.error} />
         <SystemInsightsCard insights={dashboard.insights} loading={dashboard.loading} error={dashboard.error} />
       </div>
@@ -143,10 +155,10 @@ function NeedsAttentionCard({
   ];
 
   return (
-    <Card className="p-5">
+    <Card className="p-4">
       <SectionHeader title="Needs Attention" action={<span className="rounded-full bg-danger-soft px-2 py-1 text-xs font-bold text-danger">{loading ? "..." : summary?.totalAttentionItems ?? 0}</span>} />
       {error ? <InlineError message={error} /> : null}
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-2.5">
         {loading ? (
           <>
             <AttentionSkeleton />
@@ -155,17 +167,20 @@ function NeedsAttentionCard({
           </>
         ) : (
           items.map(({ title, description, count, icon: Icon, className, href }) => (
-            <Link key={title} className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-surface" href={href}>
+            <Link key={title} className="flex min-h-[70px] items-center justify-between rounded-md border border-border p-3 hover:bg-surface" href={href}>
               <div className="flex items-center gap-3">
-                <span className={`grid h-10 w-10 place-items-center rounded-lg ${className}`}>
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${className}`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-bold text-ink">{title}</p>
                   <p className="text-xs text-muted">{description}</p>
                 </div>
               </div>
-              <span className="text-xl font-bold text-ink">{formatCount(count ?? null)}</span>
+              <span className="flex items-center gap-2 text-xl font-bold text-ink">
+                {formatCount(count ?? null)}
+                <ChevronRight className="h-4 w-4 text-muted" aria-hidden="true" />
+              </span>
             </Link>
           ))
         )}
@@ -185,12 +200,12 @@ function RecentJobsCard({
 }) {
   return (
     <Card>
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <SectionHeader title="Recent Runs" />
         <Link href="/run-monitor"><ArrowLink>View all runs</ArrowLink></Link>
       </div>
       {error ? <InlineError message={error} /> : null}
-      <DataTable columns={["Run / File", "Parser", "Status", "Quality", "Last Updated", "Actions"]} minWidth="860px">
+      <DataTable columns={["Run / File", "Parser", "Status", "Quality", "Last Updated", "Actions"]} minWidth="760px">
         {loading ? (
           <>
             <RecentJobSkeleton />
@@ -200,7 +215,7 @@ function RecentJobsCard({
         ) : jobs.length ? (
           jobs.map((job) => (
             <tr key={job.id} className="hover:bg-surface">
-              <td className="px-4 py-3">
+              <td className="px-4 py-2.5">
                 <div className="flex items-center gap-3">
                   <FileTypeIcon type={job.fileType} />
                   <div>
@@ -209,11 +224,16 @@ function RecentJobsCard({
                   </div>
                 </div>
               </td>
-              <td className="px-4 py-3 text-muted">{job.parser}</td>
-              <td className="px-4 py-3"><StatusPill status={statusTone(job.status)}>{job.statusLabel}</StatusPill></td>
-              <td className="px-4 py-3 font-semibold text-ink">{job.quality}</td>
-              <td className="px-4 py-3 text-muted">{job.updated}</td>
-              <td className="px-4 py-3"><Link className="font-bold text-accent" href={job.detailHref || "/jobs"}>View</Link></td>
+              <td className="px-4 py-2.5 text-muted">{job.parser}</td>
+              <td className="px-4 py-2.5"><StatusPill status={statusTone(job.status)}>{job.statusLabel}</StatusPill></td>
+              <td className="px-4 py-2.5 font-semibold text-ink">{job.quality}</td>
+              <td className="px-4 py-2.5 text-muted">{job.updated}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex items-center gap-3">
+                  <Link className="font-bold text-accent" href={job.detailHref || "/jobs"}>View</Link>
+                  <MoreVertical className="h-4 w-4 text-muted" aria-hidden="true" />
+                </div>
+              </td>
             </tr>
           ))
         ) : (
@@ -236,7 +256,7 @@ function SystemInsightsCard({
   loading: boolean;
 }) {
   return (
-    <Card className="p-5">
+    <Card className="p-4">
       <SectionHeader title="System Insights" action={<span className="text-xs text-muted">Last 7 days</span>} />
       {error ? <InlineError message={error} /> : null}
       {loading || !insights ? (
@@ -247,12 +267,13 @@ function SystemInsightsCard({
         </div>
       ) : (
         <>
-          <div className="mt-5 grid grid-cols-[1fr_1px_1fr] gap-5">
+          <div className="mt-5 grid grid-cols-[1fr_1px_1fr] gap-4">
             <div>
               <p className="text-xs font-bold text-muted">Throughput</p>
               <p className="mt-3 text-2xl font-bold text-ink">{formatCount(insights.throughput)}</p>
               <p className="text-xs text-muted">runs processed</p>
               <div className="mt-4"><Sparkline data={insights.sparkline} tone="info" /></div>
+              <FileTypeDonut items={insights.topFileTypes} />
             </div>
             <div className="bg-border" />
             <div>
@@ -267,13 +288,39 @@ function SystemInsightsCard({
               </div>
             </div>
           </div>
-          <div className="mt-5 rounded-lg border border-emerald-200 bg-success-soft p-3 text-sm text-emerald-800">
+          <div className="mt-4 rounded-md border border-emerald-200 bg-success-soft p-3 text-sm text-emerald-800">
             <span className="font-bold">System recommendations enabled</span>
             <p className="text-xs">{insights.recommendationText}</p>
           </div>
         </>
       )}
     </Card>
+  );
+}
+
+function FileTypeDonut({ items }: { items: SystemInsights["topFileTypes"] }) {
+  const colors = ["#F45113", "#12B76A", "#2563EB", "#8B5CF6", "#98A2B3"];
+  if (!items.length) {
+    return <div className="mt-4 h-20 w-20 rounded-full border-[14px] border-slate-100" aria-hidden="true" />;
+  }
+
+  let cursor = 0;
+  const segments = items.map((item, index) => {
+    const start = cursor;
+    cursor += item.percent;
+    return `${colors[index % colors.length]} ${start}% ${cursor}%`;
+  });
+
+  return (
+    <div
+      className="mt-4 h-20 w-20 rounded-full"
+      style={{ background: `conic-gradient(${segments.join(", ")})` }}
+      aria-hidden="true"
+    >
+      <div className="grid h-full w-full place-items-center rounded-full p-[14px]">
+        <div className="h-full w-full rounded-full bg-white" />
+      </div>
+    </div>
   );
 }
 

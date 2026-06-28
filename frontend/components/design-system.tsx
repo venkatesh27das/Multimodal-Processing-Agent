@@ -11,6 +11,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  Info,
   Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -23,7 +24,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={clsx("rounded-xl border border-border bg-white shadow-panel", className)}>
+    <section className={clsx("rounded-lg border border-border bg-white shadow-panel", className)}>
       {children}
     </section>
   );
@@ -119,19 +120,27 @@ export function MetricCard({
     info: "bg-info-soft text-info",
     purple: "bg-purple-soft text-purple",
   };
+  const isNegativeDelta = delta?.trim().startsWith("↓");
   return (
-    <Card className="flex min-h-[92px] items-center justify-between gap-4 p-4">
-      <div className="flex items-center gap-4">
-        <div className={clsx("grid h-12 w-12 place-items-center rounded-xl", toneClasses[tone])}>
-          {Icon ? <Icon className="h-6 w-6" aria-hidden="true" /> : null}
+    <Card className="flex min-h-[86px] items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className={clsx("grid h-11 w-11 shrink-0 place-items-center rounded-lg", toneClasses[tone])}>
+          {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
         </div>
-        <div>
-          <p className="text-xs font-bold text-muted">{label}</p>
-          <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-ink">{value}</p>
-          {delta ? <p className="mt-1 text-xs font-semibold text-success">{delta}</p> : null}
+        <div className="min-w-0">
+          <p className="flex items-center gap-1 text-xs font-bold leading-tight text-muted">
+            <span>{label}</span>
+            <Info className="h-3 w-3 shrink-0 text-subtle" aria-hidden="true" />
+          </p>
+          <p className="mt-1 text-[23px] font-bold leading-none tracking-[-0.02em] text-ink">{value}</p>
+          {delta ? (
+            <p className={clsx("mt-2 text-xs font-semibold", isNegativeDelta ? "text-danger" : "text-success")}>
+              {delta}
+            </p>
+          ) : null}
         </div>
       </div>
-      {data ? <Sparkline data={data} tone={tone} /> : null}
+      {data ? <Sparkline data={data} tone={tone} className="hidden shrink-0 2xl:block" /> : null}
     </Card>
   );
 }
@@ -357,9 +366,11 @@ export function FileTypeIcon({ type }: { type: string }) {
 export function Sparkline({
   data,
   tone = "info",
+  className,
 }: {
   data: number[];
   tone?: "accent" | "success" | "warning" | "danger" | "info" | "purple";
+  className?: string;
 }) {
   const color = {
     accent: "#F45113",
@@ -379,7 +390,7 @@ export function Sparkline({
     })
     .join(" ");
   return (
-    <svg className="h-9 w-20" viewBox="0 0 80 32" aria-hidden="true">
+    <svg className={clsx("h-8 w-20", className)} viewBox="0 0 80 32" aria-hidden="true">
       <polyline fill="none" points={points} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
     </svg>
   );

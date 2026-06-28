@@ -8,8 +8,8 @@ export type FileUploadToast = {
   message: string;
 };
 
-export function useFileUpload() {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+export function useFileUpload(initialFiles: UploadedFile[] = []) {
+  const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
   const [toast, setToast] = useState<FileUploadToast | null>(null);
 
   const uploadedFiles = useMemo(
@@ -58,9 +58,9 @@ export function useFileUpload() {
   }, []);
 
   const resetFiles = useCallback(() => {
-    setFiles([]);
+    setFiles(initialFiles);
     setToast(null);
-  }, []);
+  }, [initialFiles]);
 
   return {
     files,

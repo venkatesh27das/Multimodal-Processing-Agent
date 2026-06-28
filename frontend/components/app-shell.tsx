@@ -12,11 +12,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-surface text-ink">
       <Sidebar />
-      <div className="min-h-screen lg:pl-[260px]">
+      <div className="min-h-screen lg:pl-[248px] 2xl:pl-[260px]">
         <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
-          <div className="flex h-[74px] items-center justify-between gap-4 px-6">
-            <div className="flex min-w-0 items-center gap-8">
-              <button className="hidden min-w-[215px] text-left lg:block" type="button">
+          <div className="flex h-[74px] items-center justify-between gap-4 px-5 2xl:px-6">
+            <div className="flex min-w-0 items-center gap-6 2xl:gap-8">
+              <button className="hidden min-w-[205px] text-left lg:block 2xl:min-w-[215px]" type="button">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-muted">Workspace</p>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="truncate text-base font-bold text-ink">Enterprise Workspace</span>
@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <h1 className="truncate text-2xl font-bold tracking-[-0.02em] text-ink">{pageTitle}</h1>
             </div>
             <div className="flex items-center gap-4">
-              <div className="hidden h-10 w-[360px] items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel xl:flex">
+              <div className="hidden h-10 w-[320px] items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm text-muted shadow-panel xl:flex 2xl:w-[360px]">
                 <Search className="h-4 w-4" aria-hidden="true" />
                 <span className="flex-1">Search files, runs, parsers...</span>
                 <kbd className="rounded-md bg-surface px-2 py-0.5 text-xs font-semibold text-muted">⌘ K</kbd>
@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="px-6 py-5">{children}</main>
+        <main className="px-5 py-5 2xl:px-6">{children}</main>
       </div>
     </div>
   );

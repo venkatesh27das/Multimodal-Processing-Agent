@@ -31,7 +31,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { DragEvent, RefObject } from "react";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { UploadedFile } from "@/api/files";
 import type {
   JobEvent,
@@ -47,7 +47,6 @@ import {
   ActionButton,
   Card,
   FileTypeIcon,
-  ProgressStepper,
   SectionHeader,
   StatusPill,
   Tag,
@@ -78,14 +77,52 @@ const uploadSources: Array<{ label: string; icon: LucideIcon }> = [
   { label: "Email Intake", icon: Mail },
 ];
 
+const demoFileSpecs = [
+  {
+    id: "demo-file-contract",
+    name: "Master Services Agreement.pdf",
+    type: "pdf",
+    size: 2_400_000,
+    modalities: ["text"],
+    tableLikelihood: 0.28,
+    imageLikelihood: 0.12,
+    complexity: "Contracts",
+  },
+  {
+    id: "demo-file-financials",
+    name: "Q2 Financial Report.xlsx",
+    type: "xlsx",
+    size: 18_100_000,
+    modalities: ["text"],
+    tableLikelihood: 0.92,
+    imageLikelihood: 0.08,
+    complexity: "Financial",
+  },
+  {
+    id: "demo-file-product-demo",
+    name: "Product Demo Recording.mp4",
+    type: "mp4",
+    size: 25_100_000,
+    modalities: ["video", "audio"],
+    tableLikelihood: 0.04,
+    imageLikelihood: 0.86,
+    complexity: "Multimedia",
+  },
+];
+
 export default function ParsePage() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const upload = useFileUpload();
+  const demoFiles = useMemo(() => createDemoFiles(), []);
+  const upload = useFileUpload(demoFiles);
   const workflow = useParseWorkflow(upload.uploadedFiles);
 
   const fileTypes = useMemo(() => summarizeFileTypes(upload.files), [upload.files]);
   const totalSize = useMemo(() => upload.files.reduce((sum, file) => sum + file.size, 0), [upload.files]);
   const toast = workflow.toast ?? upload.toast;
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [workflow.step]);
 
   function closeToast() {
     workflow.clearToast();
@@ -125,7 +162,7 @@ export default function ParsePage() {
     <div className="space-y-5">
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={closeToast} /> : null}
 
-      <ProgressStepper
+      <ParseStepper
         steps={["Upload", "Configure", "Review & Run"]}
         current={workflow.step === "review" ? 2 : workflow.step === "configure" ? 1 : 0}
       />
@@ -176,6 +213,40 @@ export default function ParsePage() {
   );
 }
 
+function ParseStepper({ current, steps }: { current: number; steps: string[] }) {
+  return (
+    <div className="rounded-lg border-b border-border bg-white/40 px-3 py-4">
+      <div className="flex items-center gap-3">
+        {steps.map((step, index) => {
+          const done = index < current;
+          const active = index === current;
+          return (
+            <div key={step} className="flex min-w-0 flex-1 items-center gap-3 last:flex-none">
+              <span
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-bold ${
+                  done
+                    ? "border-success bg-success text-white"
+                    : active
+                      ? "border-accent bg-accent text-white"
+                      : "border-slate-300 bg-white text-slate-700"
+                }`}
+              >
+                {done ? <Check className="h-4 w-4" aria-hidden="true" /> : index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className={`block text-sm font-bold ${active ? "text-accent" : "text-ink"}`}>{step}</span>
+                {done ? <span className="block text-xs text-muted">Completed</span> : null}
+                {active && current === 2 ? <span className="block text-xs text-accent">Review before you run</span> : null}
+              </span>
+              {index < steps.length - 1 ? <span className="h-px min-w-10 flex-1 bg-border" /> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function UploadState({
   files,
   fileTypes,
@@ -202,20 +273,20 @@ function UploadState({
   const uploadedCount = files.filter((file) => file.status === "uploaded").length;
   const languages = summarizeLanguages(files);
   return (
-    <div className="grid gap-5 2xl:grid-cols-[1fr_360px]">
-      <Card className="p-5">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Card className="p-4">
         <SectionHeader title="Upload files" />
         <label
-          className="mt-4 flex min-h-[190px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center hover:border-accent hover:bg-accent-soft/40"
+          className="mt-4 flex min-h-[156px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center hover:border-accent hover:bg-accent-soft/40"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
-          <CloudUpload className="h-12 w-12 text-slate-500" aria-hidden="true" />
-          <p className="mt-4 text-sm font-semibold text-ink">
+          <CloudUpload className="h-10 w-10 text-slate-500" aria-hidden="true" />
+          <p className="mt-3 text-sm font-semibold text-ink">
             Drag and drop files here, or <span className="text-accent">click to browse</span>
           </p>
           <p className="mt-2 text-sm text-muted">Upload documents, spreadsheets, images, audio, and video files.</p>
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
             {supportedFormats.map((type) => <Tag key={type}>{type}</Tag>)}
           </div>
           <input
@@ -228,11 +299,11 @@ function UploadState({
         </label>
 
         <p className="mt-4 text-sm font-bold text-ink">Or upload from</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {uploadSources.map(({ label, icon: Icon }) => (
             <button
               key={label}
-              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white text-sm font-bold text-ink hover:bg-surface"
+              className="flex h-11 items-center justify-center gap-2 rounded-md border border-border bg-white text-sm font-bold text-ink hover:bg-surface"
               type="button"
               onClick={() => inputRef.current?.click()}
             >
@@ -244,9 +315,9 @@ function UploadState({
 
         <UploadedFileList files={files} onRemove={onRemove} totalSize={totalSize} />
 
-        <Card className="mt-5 p-4 shadow-none">
+        <Card className="mt-4 p-3 shadow-none">
           <SectionHeader title="File profiling preview" />
-          <div className="mt-3 grid overflow-hidden rounded-lg border border-border text-sm md:grid-cols-3">
+          <div className="mt-3 grid overflow-hidden rounded-md border border-border text-sm md:grid-cols-3">
             <PreviewCell
               label="File types detected"
               value={fileTypes.length ? fileTypes.map((item) => `${item.type.toUpperCase()} ${item.count}`).join("  ") : "Waiting for upload"}
@@ -264,7 +335,7 @@ function UploadState({
           <p className="mt-3 text-xs text-muted">Profiling runs automatically after upload. You can review full details in the next step.</p>
         </Card>
 
-        <div className="mt-5 flex justify-end gap-3">
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-4 flex justify-end gap-3 border-t border-border bg-white px-4 py-3">
           <ActionButton type="button" variant="secondary" onClick={onSaveDraft}>Save Draft</ActionButton>
           <ActionButton
             type="button"
@@ -306,11 +377,11 @@ function ConfigureState({
   planning: boolean;
 }) {
   return (
-    <div className="grid gap-5 2xl:grid-cols-[1fr_300px]">
-      <div className="space-y-5">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="space-y-4">
         <section>
           <SectionHeader title="Parsing objective" description="Select the primary objective for this parsing run." />
-          <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-4 grid gap-3 md:grid-cols-3 2xl:grid-cols-6">
             {objectives.map((item) => (
               <ObjectiveButton
                 key={item.id}
@@ -324,7 +395,7 @@ function ConfigureState({
           </div>
         </section>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader
             title="Recommended parser strategy"
             description="Per-file parser recommendations based on content type and objective."
@@ -334,9 +405,9 @@ function ConfigureState({
           <RecommendationTable files={files} planning={planning} recommendations={plan?.recommendations ?? []} />
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Smart configuration" description="Recommended settings optimized for your selected objective and files." />
-          <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <div className="mt-4 grid gap-3 md:grid-cols-3 2xl:grid-cols-5">
             <ConfigSelect
               label="Output Preset"
               value={configuration.outputPreset}
@@ -380,7 +451,7 @@ function ConfigureState({
               onChange={(value) => onUpdateConfiguration({ humanReviewPolicy: value as ParseConfiguration["humanReviewPolicy"] })}
             />
           </div>
-          <Card className="mt-4 p-4 shadow-none">
+          <Card className="mt-4 p-3 shadow-none">
             <SectionHeader title="Advanced Options" />
             <div className="mt-4 grid gap-x-8 gap-y-3 lg:grid-cols-2">
               <TextField
@@ -445,7 +516,7 @@ function ConfigureState({
           </Card>
         </Card>
 
-        <div className="flex justify-between">
+        <div className="sticky bottom-0 z-10 flex justify-between border-t border-border bg-surface/95 py-3 backdrop-blur">
           <ActionButton type="button" variant="secondary" onClick={onBack}>Back</ActionButton>
           <ActionButton type="button" icon={ArrowRight} disabled={planning || !plan} onClick={onContinue}>
             Continue to Review
@@ -479,17 +550,17 @@ function ReviewState({
 }) {
   const recommendations = plan?.recommendations ?? [];
   return (
-    <div className="grid gap-5 2xl:grid-cols-[1fr_320px]">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
         <div>
           <h2 className="text-2xl font-bold text-ink">Start Parsing</h2>
           <p className="mt-1 text-sm text-muted">Review your selections and configuration before starting the parsing run.</p>
         </div>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Files to process" action={<span className="text-sm font-bold text-muted">({files.length})</span>} />
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="text-xs font-bold text-muted">
                 <tr>
                   <th className="border-b border-border py-3">File name</th>
@@ -530,7 +601,7 @@ function ReviewState({
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Execution plan" />
           <div className="mt-3 space-y-3">
             {(plan?.executionStages ?? []).map((stage, index) => (
@@ -545,14 +616,14 @@ function ReviewState({
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Expected outputs" />
           <div className="mt-3 flex flex-wrap gap-3">
             {(plan?.expectedOutputs ?? []).map((output) => <OutputTag key={output} label={output} />)}
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <SectionHeader title="Governance & review" />
           <div className="mt-4 grid gap-4 md:grid-cols-4">
             {[
@@ -573,7 +644,7 @@ function ReviewState({
         </Card>
       </div>
 
-      <Card className="p-5">
+      <Card className="p-4">
         <SectionHeader title="Ready to run" description="Review the summary below and start the run." />
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MiniStat label="Files" value={String(files.length)} detail="Selected" />
@@ -645,9 +716,9 @@ function RunningState({
         </div>
       </Card>
 
-      <div className="grid gap-5 2xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <Card className="p-5">
+          <Card className="p-4">
             <div className="grid gap-4 md:grid-cols-3">
               {["Configure", "Preferences", "Submit"].map((label, index) => (
                 <div key={label} className="flex items-center gap-3">
@@ -663,7 +734,7 @@ function RunningState({
             </div>
           </Card>
 
-          <Card className="p-5">
+          <Card className="p-4">
             <SectionHeader title="Execution progress" />
             <div className="mt-5 flex items-end justify-between">
               <div>
@@ -717,7 +788,7 @@ function RunningState({
             </div>
           </Card>
 
-          <Card className="p-5">
+          <Card className="p-4">
             <SectionHeader title="Live parser activity" />
             <div className="mt-4 space-y-3">
               {activity.map((event) => (
@@ -735,7 +806,7 @@ function RunningState({
         </div>
 
         <div className="space-y-4">
-          <Card className="p-5">
+          <Card className="p-4">
             <SectionHeader title="Run summary" />
             <div className="mt-4 space-y-3">
               <SummaryMetric icon={FileCheck2} label="Files Processed" value={String(progress.processedFiles)} detail={`of ${progress.totalFiles}`} tone="info" />
@@ -744,7 +815,7 @@ function RunningState({
               <SummaryMetric icon={Timer} label="Estimated Completion" value={estimatedCompletion(false)} detail="Local time" tone="purple" />
             </div>
           </Card>
-          <Card className="p-5">
+          <Card className="p-4">
             <SectionHeader title="Next destinations" description="You can monitor or review results as the run progresses." />
             <div className="mt-4 space-y-3">
               {[
@@ -779,14 +850,14 @@ function UploadedFileList({
 }) {
   if (!files.length) return null;
   return (
-    <div className="mt-5 rounded-lg border border-border">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 text-sm">
+    <div className="mt-4 rounded-md border border-border">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-sm">
         <span className="font-bold text-ink">{files.length} file{files.length === 1 ? "" : "s"} uploaded</span>
         <span className="text-muted">Total size: {formatBytes(totalSize)}</span>
       </div>
       <div className="divide-y divide-border">
         {files.map((file) => (
-          <div key={file.localId} className="grid grid-cols-[1fr_80px_90px_28px] items-center gap-3 px-4 py-3 text-sm">
+          <div key={file.localId} className="grid grid-cols-[1fr_72px_86px_28px] items-center gap-3 px-4 py-2.5 text-sm">
             <div className="flex min-w-0 items-center gap-3">
               <FileTypeIcon type={file.type} />
               <span className="truncate font-bold text-ink">{file.name}</span>
@@ -808,7 +879,7 @@ function UploadedFileList({
 function UploadSummary({ files, fileTypes }: { files: UploadedFile[]; fileTypes: Array<{ type: string; count: number }> }) {
   const uploaded = files.filter((file) => file.status === "uploaded").length;
   return (
-    <Card className="p-5">
+    <Card className="p-4">
       <SectionHeader title="Parsing summary" />
       <div className="mt-4 space-y-4">
         <SummaryRow icon={FileText} title="Detected file types" value={fileTypes.length ? String(fileTypes.length) : "0"} detail={fileTypes.length ? fileTypes.map((item) => item.type.toUpperCase()).join(", ") : "See preview for details"} />
@@ -822,10 +893,10 @@ function UploadSummary({ files, fileTypes }: { files: UploadedFile[]; fileTypes:
 
 function ConfigureSummary({ configuration, plan }: { configuration: ParseConfiguration; plan: ParsingPlan | null }) {
   return (
-    <Card className="p-5">
+    <Card className="p-4">
       <SectionHeader title="Configuration summary" />
       <div className="mt-4 space-y-3">
-        <Card className="p-4 shadow-none">
+        <div className="rounded-md border border-border p-3">
           <p className="text-sm font-bold text-ink">Expected outputs</p>
           <div className="mt-3 space-y-2">
             {(plan?.expectedOutputs ?? ["Text content & structure", "Metadata & key properties", "Sections, pages, and tables"]).slice(0, 4).map((output) => (
@@ -834,13 +905,13 @@ function ConfigureSummary({ configuration, plan }: { configuration: ParseConfigu
               </p>
             ))}
           </div>
-        </Card>
-        <Card className="p-4 shadow-none">
+        </div>
+        <div className="rounded-md border border-border p-3">
           <p className="text-sm font-bold text-ink">Recommended skills</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(plan?.recommendedSkills ?? ["contract_parsing", "table_normalization"]).map((skill) => <Tag key={skill} tone="info">{skill}</Tag>)}
           </div>
-        </Card>
+        </div>
         <SummaryMetric icon={FileText} label="Estimated cost" value={plan?.estimatedCost ?? "~ $0.04"} detail="± 15%" tone="neutral" />
         <SummaryMetric icon={Timer} label="Estimated turnaround" value={plan?.estimatedDuration ?? "~ 2 min 30 sec"} detail="± 30 sec" tone="neutral" />
         <SummaryMetric icon={ShieldCheck} label="Policy coverage" value={plan?.policyCoverage ?? "High (92%+)"} detail="Based on current configuration" tone="success" />
@@ -859,14 +930,14 @@ function RecommendationTable({
   recommendations: ParserRecommendation[];
 }) {
   return (
-    <div className="mt-3 overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[760px] text-left text-sm">
+    <div className="mt-3 overflow-x-auto rounded-md border border-border">
+      <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-surface text-xs font-bold text-muted">
           <tr>
-            <th className="px-4 py-3">File Name</th>
-            <th className="px-4 py-3">Primary Parser (Recommended)</th>
-            <th className="px-4 py-3">Fallback Parser</th>
-            <th className="px-4 py-3" />
+            <th className="px-4 py-2.5">File Name</th>
+            <th className="px-4 py-2.5">Primary Parser (Recommended)</th>
+            <th className="px-4 py-2.5">Fallback Parser</th>
+            <th className="px-4 py-2.5" />
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -874,7 +945,7 @@ function RecommendationTable({
             const recommendation = recommendations.find((item) => item.fileId === file.fileId);
             return (
               <tr key={file.localId}>
-                <td className="px-4 py-3">
+                <td className="px-4 py-2.5">
                   <div className="flex items-center gap-3">
                     <FileTypeIcon type={file.type} />
                     <div>
@@ -883,15 +954,15 @@ function RecommendationTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-ink">
+                <td className="px-4 py-2.5 text-ink">
                   {planning && !recommendation ? "Planning..." : recommendation?.primaryParserId ?? "--"}{" "}
                   {recommendation ? <Tag tone="success">Primary</Tag> : null}
                 </td>
-                <td className="px-4 py-3 text-ink">
+                <td className="px-4 py-2.5 text-ink">
                   {recommendation?.fallbackParserId ?? "No fallback"}{" "}
                   {recommendation?.fallbackParserId ? <Tag tone="info">Fallback</Tag> : null}
                 </td>
-                <td className="px-4 py-3"><MoreHorizontal className="h-4 w-4 text-muted" /></td>
+                <td className="px-4 py-2.5"><MoreHorizontal className="h-4 w-4 text-muted" /></td>
               </tr>
             );
           })}
@@ -916,7 +987,7 @@ function ObjectiveButton({
 }) {
   return (
     <button
-      className={`min-h-[116px] rounded-lg border p-4 text-left ${active ? "border-accent bg-accent-soft/50" : "border-border bg-white hover:bg-surface"}`}
+      className={`min-h-[112px] rounded-md border p-3 text-left ${active ? "border-accent bg-accent-soft/50" : "border-border bg-white hover:bg-surface"}`}
       type="button"
       onClick={onClick}
     >
@@ -926,7 +997,7 @@ function ObjectiveButton({
           {active ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
         </span>
       </div>
-      <p className="mt-5 text-sm font-bold text-ink">{title}</p>
+      <p className="mt-4 text-sm font-bold text-ink">{title}</p>
       <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
     </button>
   );
@@ -947,7 +1018,7 @@ function ConfigSelect({
     <label className="block">
       <span className="mb-1 block text-xs font-bold text-muted">{label}</span>
       <select
-        className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel outline-none focus:border-accent"
+        className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold text-ink shadow-panel outline-none focus:border-accent"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -974,7 +1045,7 @@ function TextField({
     <label className="grid grid-cols-[160px_1fr] items-center gap-3 text-sm">
       <span className="font-semibold text-muted">{label}</span>
       <input
-        className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-accent"
+        className="h-9 rounded-md border border-border bg-white px-3 text-sm text-ink outline-none focus:border-accent"
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1006,10 +1077,10 @@ function SummaryRow({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="rounded-md border border-border p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className={`${success ? "bg-success-soft text-success" : "bg-accent-soft text-accent"} grid h-10 w-10 place-items-center rounded-lg`}>
+          <span className={`${success ? "bg-success-soft text-success" : "bg-accent-soft text-accent"} grid h-10 w-10 shrink-0 place-items-center rounded-md`}>
             <Icon className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
@@ -1044,8 +1115,8 @@ function SummaryMetric({
     purple: "bg-purple-soft text-purple",
   }[tone];
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-border p-4">
-      <span className={`grid h-11 w-11 place-items-center rounded-lg ${toneClass}`}>
+    <div className="flex items-center gap-3 rounded-md border border-border p-3">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${toneClass}`}>
         <Icon className="h-5 w-5" />
       </span>
       <div>
@@ -1068,7 +1139,7 @@ function PreviewCell({ label, success = false, value }: { label: string; success
 
 function MiniStat({ detail, label, value }: { detail: string; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="rounded-md border border-border p-3">
       <p className="text-sm text-muted">{label}</p>
       <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
       <p className="mt-1 text-xs text-muted">{detail}</p>
@@ -1168,6 +1239,41 @@ function Toast({
 
 function ErrorBox({ message }: { message: string }) {
   return <div className="mt-3 rounded-lg border border-red-200 bg-danger-soft p-3 text-sm text-red-700">{message}</div>;
+}
+
+function createDemoFiles(): UploadedFile[] {
+  const now = new Date().toISOString();
+  return demoFileSpecs.map((file) => ({
+    localId: `local-${file.id}`,
+    fileId: file.id,
+    name: file.name,
+    type: file.type,
+    mimeType: file.type === "pdf"
+      ? "application/pdf"
+      : file.type === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "video/mp4",
+    size: file.size,
+    sizeLabel: formatBytes(file.size),
+    status: "uploaded",
+    error: null,
+    profile: {
+      id: `profile-${file.id}`,
+      file_id: file.id,
+      file_type: file.type,
+      modalities: file.modalities,
+      has_text_layer: file.type === "pdf" ? true : null,
+      is_scanned: false,
+      page_count: file.type === "pdf" ? 12 : null,
+      table_likelihood: file.tableLikelihood,
+      image_likelihood: file.imageLikelihood,
+      language: "English",
+      layout_complexity: file.complexity,
+      estimated_cost_class: "standard",
+      recommended_parsing_strategy: "Use recommended parser with governed fallback coverage.",
+      created_at: now,
+    },
+  }));
 }
 
 function summarizeFileTypes(files: UploadedFile[]): Array<{ type: string; count: number }> {

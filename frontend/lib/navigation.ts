@@ -21,8 +21,8 @@ export type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home, section: "main" },
-  { href: "/parse", label: "Create Run", icon: ClipboardCheck, section: "main" },
-  { href: "/jobs", label: "Run Monitor", icon: BriefcaseBusiness, section: "main" },
+  { href: "/parse", label: "Parse", icon: ClipboardCheck, section: "main" },
+  { href: "/jobs", label: "Jobs", icon: BriefcaseBusiness, section: "main" },
   { href: "/review-queue", label: "Review Queue", icon: ListChecks, section: "main" },
   { href: "/assets", label: "Assets", icon: Boxes, section: "main" },
   { href: "/observability", label: "Observability", icon: Activity, section: "main" },
@@ -33,8 +33,9 @@ export const navigationItems: NavItem[] = [
 
 export function titleForPath(pathname: string) {
   if (pathname === "/home") return "Home";
-  if (pathname.startsWith("/create-run")) return "Create Run";
-  if (pathname.startsWith("/run-monitor")) return "Run Monitor";
+  if (pathname.startsWith("/create-run")) return "Parse";
+  if (pathname.startsWith("/run-monitor")) return "Jobs";
+  if (pathname.startsWith("/jobs/")) return "Job Detail";
   const active =
     navigationItems.find((item) =>
       isActivePath(pathname, item.href),
