@@ -9,6 +9,8 @@ This repo is an enterprise multimodal parsing agent. Preserve the separation bet
 - Deterministic: upload registration, checksum, storage, schema validation, persistence, governance checks, audit logs, and asset publishing.
 - Agentic/intelligent: file profiling, parser selection, parsing strategy, fallback planning, skill selection, quality interpretation, review recommendation, and MCP/tool planning.
 
+The next priority is to make the **Multimodal Parser Agent** the single public agent boundary. Design it as an A2A-style API with an Agent Card, task lifecycle, messages, artifacts, streaming/status, and explainable reasoning. Internally it may call parser services, skills, MCP tools, and focused subagents, but external clients should interact with one core parser agent.
+
 ## Local Commands
 
 Backend:
@@ -49,8 +51,12 @@ npm run lint
 
 ## Current High-Value Areas
 
-- Make global search functional across jobs, files, parsers, and assets.
-- Make Home drag/drop create or prefill a real parse workflow.
+- Implement the A2A-style `MultimodalParserAgent` as the top-priority architecture work.
+- Persist agent tasks, messages, artifacts, plans, steps, decisions, tool calls, skill invocations, quality judgements, and lineage.
+- Make existing parser selection, execution, fallback, quality, review, and asset publishing run as explicit agent steps.
+- Add Agent Plan, Agent Reasoning, and Agent Timeline UI surfaces.
+- Make Home drag/drop create a real parser-agent task.
+- Make global search functional across jobs, files, parsers, assets, skills, and agent tasks.
 - Persist human review approve/reject decisions.
 - Add durable background job execution instead of synchronous parsing.
 - Replace placeholder cloud/audio/video adapters with real implementations.

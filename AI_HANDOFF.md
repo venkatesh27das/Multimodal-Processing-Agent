@@ -93,6 +93,9 @@ npm run build
 
 ## Known Gaps
 
+- The core Multimodal Parser Agent is not yet exposed as one A2A-style agent API.
+- There is no first-class Agent Card, A2A task lifecycle, agent message stream, or artifact model.
+- Parser orchestration exists, but agent reasoning, subagent delegation, MCP/tool calls, and skill invocation are not yet captured as one canonical agent trace.
 - Global search in the app shell is still mostly visual.
 - Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
@@ -104,12 +107,39 @@ npm run build
 
 ## Suggested Next Work
 
-1. Implement real global search with a backend `/search` endpoint across files, jobs, assets, parsers, and skills.
-2. Connect Home drag/drop to the existing file upload and parse workflow state.
-3. Add persisted review decisions and reflect them in Review Queue, Home, Jobs, and Job Detail.
-4. Add backend trend series for dashboard sparklines instead of hiding them.
-5. Add tests for the dashboard, review summary, jobs metrics, and parser metrics routes.
-6. Add a background worker and async job state transitions.
+Priority 1 is to turn the current orchestration platform into a single public **A2A-style Multimodal Parser Agent**. The main agent should be the stable API boundary. Internally it can call parser services, skills, MCP tools, and subagents, but external clients should interact with one agent.
+
+### Priority 1: A2A Multimodal Parser Agent
+
+1. Add a first-class `MultimodalParserAgent` service that owns the loop: observe -> plan -> act -> evaluate -> repair -> publish.
+2. Add an Agent Card endpoint describing the agent name, description, capabilities, supported modalities, input/output modes, skills, and task endpoints.
+3. Add A2A-style task endpoints for creating, reading, listing, cancelling, and streaming parser-agent tasks.
+4. Add persisted agent task models for `AgentTask`, `AgentMessage`, `AgentArtifact`, `AgentPlan`, `AgentStep`, `AgentDecision`, `AgentToolCall`, `AgentSkillInvocation`, and `AgentQualityJudgement`.
+5. Convert existing file profiling, parser selection, parsing plan, execution, fallback, quality evaluation, review routing, and asset publishing into explicit agent steps.
+6. Store the agent reasoning trace: observations, selected parser, selected skill, tool/subagent calls, fallback decisions, confidence signals, review rationale, and published asset lineage.
+7. Keep REST endpoints for UI compatibility, but make them read from or delegate to the core agent task model where possible.
+
+### Priority 2: Internal Capabilities Behind The Agent
+
+1. Define an internal subagent registry for focused capabilities such as File Profiler, Parser Strategy, Extraction, Quality, Repair, Review, and Publisher.
+2. Define an MCP/tool gateway so the core parser agent can call OCR, VLM, document intelligence, vector search, policy, or external parsing tools through a consistent interface.
+3. Make skills first-class planner-selectable capabilities with declared inputs, outputs, supported document types, confidence behavior, and validation rules.
+4. Add policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
+
+### Priority 3: Agentic UI
+
+1. Add Agent Plan and Agent Reasoning panels to Parse and Job Detail.
+2. Show the agent timeline: observed, planned, parser selected, skill invoked, fallback attempted, quality judged, review requested, asset published.
+3. Show task artifacts such as file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
+4. Connect Home drag/drop to create a real parser-agent task.
+5. Implement global search with a backend `/search` endpoint across files, jobs, assets, parsers, skills, and agent tasks.
+
+### Priority 4: Operational Hardening
+
+1. Add persisted review decisions and reflect them in Review Queue, Home, Jobs, and Job Detail.
+2. Add backend trend series for dashboard sparklines instead of hiding them.
+3. Add tests for dashboard, review summary, jobs metrics, parser metrics, and new agent task routes.
+4. Add a background worker and async job/task state transitions.
 
 ## Files Future Agents Should Read First
 
