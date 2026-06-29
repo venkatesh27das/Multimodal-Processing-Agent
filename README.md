@@ -51,6 +51,114 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Use a Next.js console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
 
+## Current Agent Capabilities
+
+This is what the current implementation exposes behind the Multimodal Parser Agent boundary.
+
+### Internal Subagents
+
+These are represented as named Google ADK phase agents and persisted subtask trace records. They are internal capabilities, not separate public products.
+
+| Subagent | Phase | Current responsibility |
+| --- | --- | --- |
+| `FileProfilerAgent` | Observe | Reads persisted file profile, modality, layout, text/scanned signals, and risk hints. |
+| `ParserStrategyAgent` | Plan | Selects parser, fallback, skill, quality target, cost/latency posture, and review policy. |
+| `ExtractionAgent` | Act | Runs parser adapters and records parser execution outputs. |
+| `QualityAgent` | Evaluate | Scores confidence, completeness, schema validity, consistency, and review need. |
+| `RepairAgent` | Repair | Uses fallback policy when confidence is below threshold or primary extraction is weak. |
+| `PublisherAgent` | Publish | Creates parsed assets with quality, lineage, skill output, and audit context. |
+
+### ADK Tools And Internal Tool Gateway
+
+The ADK runtime currently registers these function tools:
+
+- `observe_file_profile_tool`
+- `plan_parser_strategy_tool`
+- `execute_parser_plan_tool`
+- `evaluate_quality_tool`
+- `publish_asset_tool`
+- `discover_skills_tool`
+- `tool_gateway_policy_tool`
+
+The internal tool gateway currently exposes capability metadata and governance filtering for:
+
+| Tool gateway id | Category | Status |
+| --- | --- | --- |
+| `parser.registry` | parser selection | Local metadata-backed capability. |
+| `parser.adapter` | parsing | Local parser execution path; external use is policy-gated. |
+| `skill.registry` | skill selection | Local skill discovery metadata. |
+| `quality.evaluator` | quality evaluation | Local quality scoring capability. |
+| `asset.publisher` | asset publishing | Local governed asset publishing capability. |
+
+### Parser Tools
+
+Parser adapters are pluggable through the parser registry.
+
+| Parser id | Type | Deployment | Status |
+| --- | --- | --- | --- |
+| `pdf_native_text` | deterministic PDF | local | Real parser for PDFs with native text layers. |
+| `docx_text` | deterministic DOCX | local | Real parser for DOCX paragraphs and tables. |
+| `html_text` | deterministic HTML | local | Real parser for clean text, tables, and image metadata. |
+| `image_ocr` | OCR | local | Real path when Tesseract is installed. |
+| `tesseract_ocr` | OCR | local | OCR fallback for images and rendered PDF pages. |
+| `mock_vlm` | VLM | local LM Studio | Calls a local OpenAI-compatible LM Studio VLM endpoint when enabled. |
+| `azure_document_intelligence` | document intelligence | external | Placeholder adapter; credentials/service integration pending. |
+| `audio_transcription` | speech | local | Placeholder adapter; real speech model pending. |
+| `video_parser` | video | local | Placeholder adapter; real media pipeline pending. |
+
+### MCP-Style Tools
+
+The MVP includes a lightweight MCP-style tool registry at `GET /api/v1/mcp/tools`. It does not require the MCP SDK yet; handlers are local Python callables that can later be wrapped by a real MCP transport.
+
+| MCP tool | What it does today |
+| --- | --- |
+| `parse_document` | Runs the orchestration flow for one registered file. |
+| `parse_batch` | Runs parsing for multiple registered files. |
+| `get_parse_status` | Returns parse job status and parser metadata. |
+| `get_document_assets` | Returns parsed assets for a file. |
+| `get_quality_report` | Returns the latest quality report for a job. |
+| `compare_parser_outputs` | Runs selected parsers and compares confidence scores. |
+| `reprocess_with_strategy` | Re-runs parsing with explicit strategy fields. |
+| `submit_human_review` | Creates a human review item for a parse job. |
+
+### Skills
+
+Skills are folder-backed capabilities under `backend/app/skills` and are also seeded into the skills registry.
+
+| Skill id | Purpose | Supported document types |
+| --- | --- | --- |
+| `invoice_extraction` | Invoice numbers, vendors, totals, line items, and due dates. | PDF, DOCX, image |
+| `contract_parsing` | Parties, terms, obligations, clauses, and effective dates. | PDF, DOCX |
+| `research_paper_parsing` | Title, authors, abstract, sections, citations, figures, and tables. | PDF, HTML |
+| `audio_meeting_parsing` | Speaker turns, action items, decisions, and meeting summaries. | audio, video |
+| `table_normalization` | Typed rows, columns, units, and table cleanup. | PDF, DOCX, HTML |
+| `knowledge_graph_preparation` | Entities and relationships for graph-oriented publishing. | PDF, DOCX, HTML |
+
+### Public Agent Input And Output Modes
+
+Supported task inputs:
+
+- uploaded file through `POST /api/v1/agent/tasks/upload`
+- `file_id`
+- `file_ids`
+- `text_payload`
+- `asset_id`
+- `url` placeholder, without remote fetching in local mode
+
+Persisted task outputs:
+
+- file profile
+- parsing plan
+- agent reasoning
+- parser output
+- skill output
+- quality report
+- fallback report when used
+- review request when needed
+- parsed asset
+- lineage report
+- audit summary
+
 ## Screenshots
 
 The UI is intentionally compact and operations-focused. The screenshots below are the current wireframe-aligned app screens in this repo.
