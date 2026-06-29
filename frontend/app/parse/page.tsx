@@ -79,43 +79,9 @@ const uploadSources: Array<{ label: string; icon: LucideIcon }> = [
   { label: "Email Intake", icon: Mail },
 ];
 
-const demoFileSpecs = [
-  {
-    id: "demo-file-contract",
-    name: "Master Services Agreement.pdf",
-    type: "pdf",
-    size: 2_400_000,
-    modalities: ["text"],
-    tableLikelihood: 0.28,
-    imageLikelihood: 0.12,
-    complexity: "Contracts",
-  },
-  {
-    id: "demo-file-financials",
-    name: "Q2 Financial Report.xlsx",
-    type: "xlsx",
-    size: 18_100_000,
-    modalities: ["text"],
-    tableLikelihood: 0.92,
-    imageLikelihood: 0.08,
-    complexity: "Financial",
-  },
-  {
-    id: "demo-file-product-demo",
-    name: "Product Demo Recording.mp4",
-    type: "mp4",
-    size: 25_100_000,
-    modalities: ["video", "audio"],
-    tableLikelihood: 0.04,
-    imageLikelihood: 0.86,
-    complexity: "Multimedia",
-  },
-];
-
 export default function ParsePage() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const demoFiles = useMemo(() => createDemoFiles(), []);
-  const upload = useFileUpload(demoFiles);
+  const upload = useFileUpload();
   const workflow = useParseWorkflow(upload.uploadedFiles);
 
   const fileTypes = useMemo(() => summarizeFileTypes(upload.files), [upload.files]);
@@ -1246,41 +1212,6 @@ function Toast({
 
 function ErrorBox({ message }: { message: string }) {
   return <div className="mt-3 rounded-lg border border-red-200 bg-danger-soft p-3 text-sm text-red-700">{message}</div>;
-}
-
-function createDemoFiles(): UploadedFile[] {
-  const now = new Date().toISOString();
-  return demoFileSpecs.map((file) => ({
-    localId: `local-${file.id}`,
-    fileId: file.id,
-    name: file.name,
-    type: file.type,
-    mimeType: file.type === "pdf"
-      ? "application/pdf"
-      : file.type === "xlsx"
-        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        : "video/mp4",
-    size: file.size,
-    sizeLabel: formatBytes(file.size),
-    status: "uploaded",
-    error: null,
-    profile: {
-      id: `profile-${file.id}`,
-      file_id: file.id,
-      file_type: file.type,
-      modalities: file.modalities,
-      has_text_layer: file.type === "pdf" ? true : null,
-      is_scanned: false,
-      page_count: file.type === "pdf" ? 12 : null,
-      table_likelihood: file.tableLikelihood,
-      image_likelihood: file.imageLikelihood,
-      language: "English",
-      layout_complexity: file.complexity,
-      estimated_cost_class: "standard",
-      recommended_parsing_strategy: "Use recommended parser with governed fallback coverage.",
-      created_at: now,
-    },
-  }));
 }
 
 function summarizeFileTypes(files: UploadedFile[]): Array<{ type: string; count: number }> {

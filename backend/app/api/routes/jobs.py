@@ -5,7 +5,26 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
 from backend.app.domain.enums import JobStatus, QualityStatus
-from backend.app.models.domain import FileProfile, ParsedAsset, ParsingPlan, QualityReport
+from backend.app.models.domain import (
+    AgentArtifact,
+    AgentDecision,
+    AgentLineage,
+    AgentMessage,
+    AgentPlan,
+    AgentQualityJudgement,
+    AgentSkillInvocation,
+    AgentStep,
+    AgentSubtask,
+    AgentTask,
+    AgentToolCall,
+    AuditEvent,
+    FileProfile,
+    ParsedAsset,
+    ParserExecutionResult,
+    ParsingPlan,
+    QualityReport,
+    ReviewItem,
+)
 from backend.app.models.file import FileRecord
 from backend.app.models.job import ParseJob
 from backend.app.schemas.common import APIModel
@@ -159,6 +178,54 @@ def get_job(job_id: str, db: Session = Depends(get_db)) -> ParseJobRead:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return job
+
+
+@planning_router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job(job_id: str, db: Session = Depends(get_db)) -> None:
+    job = db.get(ParseJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    task_ids = [
+        task_id
+        for (task_id,) in db.query(AgentTask.id).filter(AgentTask.job_id == job_id).all()
+    ]
+    asset_ids = [
+        asset_id
+        for (asset_id,) in db.query(ParsedAsset.id).filter(ParsedAsset.job_id == job_id).all()
+    ]
+
+    if task_ids:
+        for model in (
+            AgentLineage,
+            AgentSkillInvocation,
+            AgentToolCall,
+            AgentDecision,
+            AgentStep,
+            AgentPlan,
+            AgentArtifact,
+            AgentMessage,
+            AgentSubtask,
+            AgentQualityJudgement,
+        ):
+            db.query(model).filter(model.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(AgentTask).filter(AgentTask.id.in_(task_ids)).delete(synchronize_session=False)
+
+    db.query(ReviewItem).filter(ReviewItem.job_id == job_id).delete(synchronize_session=False)
+    db.query(ParsedAsset).filter(ParsedAsset.job_id == job_id).delete(synchronize_session=False)
+    db.query(QualityReport).filter(QualityReport.job_id == job_id).delete(synchronize_session=False)
+    db.query(ParserExecutionResult).filter(ParserExecutionResult.job_id == job_id).delete(
+        synchronize_session=False,
+    )
+    db.query(ParsingPlan).filter(ParsingPlan.job_id == job_id).delete(synchronize_session=False)
+    db.query(AuditEvent).filter(AuditEvent.entity_id == job_id).delete(synchronize_session=False)
+    if asset_ids:
+        db.query(AuditEvent).filter(AuditEvent.entity_id.in_(asset_ids)).delete(
+            synchronize_session=False,
+        )
+
+    db.delete(job)
+    db.commit()
 
 
 @planning_router.get("/{job_id}/plan", response_model=ParsingPlanRead)

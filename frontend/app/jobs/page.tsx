@@ -8,12 +8,12 @@ import {
   Download,
   FileCheck2,
   Loader2,
-  MoreVertical,
   PlayCircle,
   Plus,
   Search,
   ShieldAlert,
   Star,
+  Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -299,6 +299,7 @@ function JobRow({
 }) {
   const busyRetry = actions.busyAction === `retry-${job.id}`;
   const busyReview = actions.busyAction === `review-${job.id}`;
+  const busyDelete = actions.busyAction === `delete-${job.id}`;
 
   return (
     <tr className="hover:bg-surface">
@@ -359,12 +360,13 @@ function JobRow({
             </button>
           ) : null}
           <button
-            className="grid h-8 w-8 place-items-center rounded-md text-muted opacity-50"
+            className="grid h-8 w-8 place-items-center rounded-md text-muted transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             type="button"
-            title="Export/download endpoint is not available yet."
-            disabled
+            title="Delete run"
+            disabled={busyDelete}
+            onClick={() => actions.deleteJob(job)}
           >
-            <MoreVertical className="h-4 w-4" aria-hidden="true" />
+            {busyDelete ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
           </button>
         </div>
       </td>

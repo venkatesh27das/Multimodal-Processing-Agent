@@ -15,7 +15,9 @@ from backend.app.models.domain import (
     FileProfile,
     FileRecord,
     ParsedAsset,
+    ParseJob,
     ParserExecutionResult,
+    ParsingPlan,
     QualityReport,
     ReviewItem,
 )
@@ -251,6 +253,54 @@ def test_asset_is_published_for_completed_job(tmp_path: Path) -> None:
             assert asset.quality_report["quality_status"] == QualityStatus.PASSED.value
             assert asset.lineage["source_file_id"] == file_record.id
             assert "Asset text" in (asset.parsed_text or "")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_delete_job_removes_run_outputs(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_file_with_profile(
+        db,
+        tmp_path=tmp_path,
+        file_id="html-delete",
+        filename="delete.html",
+        file_type=FileType.HTML,
+        content=b"<html><body>Delete me</body></html>",
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = run_job(client, file_record.id)
+            assert response.status_code == 201
+            job_id = response.json()["job"]["id"]
+
+            assert db.get(ParseJob, job_id) is not None
+            assert db.query(ParsingPlan).filter(ParsingPlan.job_id == job_id).count() == 1
+            parser_results = db.query(ParserExecutionResult).filter(
+                ParserExecutionResult.job_id == job_id,
+            )
+            assert parser_results.count() == 1
+            assert db.query(QualityReport).filter(QualityReport.job_id == job_id).count() >= 1
+            assert db.query(ParsedAsset).filter(ParsedAsset.job_id == job_id).count() == 1
+
+            delete_response = client.delete(f"/api/v1/jobs/{job_id}")
+            assert delete_response.status_code == 204
+
+            assert client.get(f"/api/v1/jobs/{job_id}").status_code == 404
+            assert db.get(ParseJob, job_id) is None
+            assert db.query(ParsingPlan).filter(ParsingPlan.job_id == job_id).count() == 0
+            assert parser_results.count() == 0
+            assert db.query(QualityReport).filter(QualityReport.job_id == job_id).count() == 0
+            assert db.query(ParsedAsset).filter(ParsedAsset.job_id == job_id).count() == 0
+            assert db.get(FileRecord, file_record.id) is not None
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()

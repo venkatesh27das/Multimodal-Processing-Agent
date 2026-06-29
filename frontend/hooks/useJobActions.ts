@@ -39,6 +39,17 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
     }, "Send to Review endpoint is not available yet.");
   }
 
+  async function deleteJob(job: Job) {
+    const confirmed = window.confirm(`Delete the run for ${job.fileName}? This removes the job, agent trace, review item, and published assets for this run.`);
+    if (!confirmed) return;
+
+    await runAction(`delete-${job.id}`, async () => {
+      await jobsApi.deleteJob(job.id);
+      setToast({ tone: "success", message: `${job.fileName} run was deleted.` });
+      await onRefresh();
+    }, "Delete endpoint is not available yet.");
+  }
+
   async function exportJobs() {
     if (exportUnsupported) {
       setToast({ tone: "warning", message: "Export endpoint is not available yet." });
@@ -99,6 +110,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
     viewJob,
     retryJob,
     sendToReview,
+    deleteJob,
     exportJobs,
   };
 }

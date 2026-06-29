@@ -296,6 +296,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const detail = await response.text();
     throw new Error(detail || `Request failed: ${response.status}`);
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
@@ -341,6 +344,10 @@ export const jobsApi = {
 
   sendToReview(jobId: string) {
     return request<BackendParseJob>(`/jobs/${jobId}/send-to-review`, { method: "POST" });
+  },
+
+  async deleteJob(jobId: string): Promise<void> {
+    await request<void>(`/jobs/${jobId}`, { method: "DELETE" });
   },
 
   exportJobs() {
