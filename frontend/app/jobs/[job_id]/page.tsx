@@ -32,6 +32,7 @@ import {
   type ParsingPlan,
   type QualityReport,
 } from "@/lib/api";
+import { AgentTracePanel } from "@/components/agent-trace-panel";
 import { ActionButton, Card, FileTypeIcon, Tag } from "@/components/design-system";
 
 type DetailState = {
@@ -223,7 +224,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         </div>
       </div>
 
-      {agentTask ? <AgentTraceCard task={agentTask} /> : null}
+      {agentTask ? <AgentTracePanel task={agentTask} /> : null}
 
       <Card className="p-4">
         <SectionTitle title="Outputs Preview" />
@@ -256,60 +257,6 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
           </PreviewPanel>
         </div>
       </Card>
-    </div>
-  );
-}
-
-function AgentTraceCard({ task }: { task: AgentTaskDetail }) {
-  const reasoning = task.artifacts.find((artifact) => artifact.kind === "agent_reasoning");
-  return (
-    <Card className="p-4">
-      <SectionTitle
-        title="Agent Plan, Timeline & Reasoning"
-        action={<Tag tone={task.status === "completed" ? "success" : task.status === "awaiting_review" ? "warning" : "info"}>{task.status.replace("_", " ")}</Tag>}
-      />
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <AgentTraceMetric label="Task" value={shortId(task.id)} detail={task.summary ?? "Agent task trace"} />
-        <AgentTraceMetric label="Parser" value={task.plan?.selected_parser_id ?? "Pending"} detail={task.plan?.summary ?? "Strategy pending"} />
-        <AgentTraceMetric label="Quality" value={task.quality_judgement?.status ?? "Pending"} detail={task.quality_judgement?.summary ?? "Quality pending"} />
-      </div>
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-2">
-          {task.steps.length ? task.steps.map((step) => (
-            <div key={step.id} className="grid grid-cols-[92px_96px_1fr] gap-3 rounded-md border border-border px-3 py-2 text-sm">
-              <span className="font-bold capitalize text-ink">{step.kind}</span>
-              <Tag tone={step.status === "completed" ? "success" : step.status === "skipped" ? "neutral" : "info"}>{step.status}</Tag>
-              <span className="text-muted">{step.summary}</span>
-            </div>
-          )) : <p className="text-sm text-muted">Agent steps will appear after execution starts.</p>}
-        </div>
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted">Artifacts</p>
-          {task.artifacts.slice(0, 6).map((artifact) => (
-            <div key={artifact.id} className="rounded-md border border-border p-2">
-              <p className="text-sm font-bold text-ink">{artifact.title}</p>
-              <p className="line-clamp-2 text-xs text-muted">{artifact.summary}</p>
-            </div>
-          ))}
-          {!task.artifacts.length ? <p className="text-sm text-muted">No artifacts persisted yet.</p> : null}
-        </div>
-      </div>
-      {reasoning ? (
-        <div className="mt-4 rounded-md bg-surface p-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted">Reasoning</p>
-          <p className="mt-1 text-sm text-ink">{reasoning.summary}</p>
-        </div>
-      ) : null}
-    </Card>
-  );
-}
-
-function AgentTraceMetric({ detail, label, value }: { detail: string; label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-muted">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold text-ink">{value}</p>
-      <p className="mt-1 line-clamp-2 text-xs text-muted">{detail}</p>
     </div>
   );
 }

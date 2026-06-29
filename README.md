@@ -78,6 +78,7 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Poll task status or stream persisted task events over SSE.
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Inspect per-task tool governance policy, allowed/blocked gateway tools, and planner-selectable skill metadata.
+- Use Parse and Job Detail trace panels for timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, and worker state.
 - Use a Next.js console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
 
 ## Current Agent Capabilities
@@ -548,7 +549,7 @@ Core screens:
 - **Home**: operational snapshot, recent jobs, parser health, review pressure, and entry points into parsing.
 - **Parse**: file upload and parse workflow surface. This is where the app should increasingly converge on agent-task creation.
 - **Jobs**: parse job list, status, parser used, quality, review state, and operational metadata.
-- **Job Detail**: plan, quality, assets, audit, and execution context for a specific job.
+- **Job Detail**: plan, quality, assets, audit, execution context, and the full agent trace for a specific job.
 - **Parsers**: parser registry, supported file types, strengths, weaknesses, deployment mode, and usage signals.
 - **Skills**: folder-backed skill packs, extraction schemas, validation rules, and supported document types.
 - **Review Queue**: uncertain outputs and rationale for human review.
@@ -785,7 +786,7 @@ This is a strong local MVP, not a production deployment template yet.
 Near-term priorities:
 
 - Replace the DB-backed local queue with a production queue backend and dead-letter workflow.
-- Deepen the agent-native UI panels for Agent Plan, Timeline, Reasoning, Artifacts, Quality, and Lineage.
+- Add dedicated full-page agent task details and artifact diff/inspection views.
 - Add global search across files, jobs, assets, parsers, skills, and agent tasks.
 - Add production migrations, auth, tenant isolation, and policy packs.
 

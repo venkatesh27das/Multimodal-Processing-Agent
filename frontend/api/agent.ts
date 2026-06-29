@@ -51,17 +51,24 @@ export type AgentTask = {
 };
 
 export type AgentPlan = {
+  id?: string;
+  status?: string;
+  title?: string;
   selected_parser_id: string | null;
   fallback_parser_id: string | null;
   selected_skill_id: string | null;
   quality_threshold: number | null;
   summary: string;
+  payload?: Record<string, unknown>;
 };
 
 export type AgentQualityJudgement = {
   status: string;
   summary: string;
   dimensions: Record<string, unknown>;
+  thresholds?: Record<string, unknown>;
+  review_rationale?: string | null;
+  payload?: Record<string, unknown>;
 };
 
 export type AgentArtifact = {
@@ -85,11 +92,77 @@ export type AgentStep = {
   created_at: string;
 };
 
+export type AgentDecision = {
+  id: string;
+  decision_type: string;
+  sequence: number;
+  title: string;
+  summary: string;
+  selected_option: string | null;
+  alternatives: Array<Record<string, unknown>>;
+  score_breakdown: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AgentToolCall = {
+  id: string;
+  tool_id: string;
+  status: string;
+  sequence: number;
+  input_summary: string | null;
+  output_summary: string | null;
+  request_payload: Record<string, unknown>;
+  response_payload: Record<string, unknown>;
+  duration_ms: number | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type AgentSkillInvocation = {
+  id: string;
+  skill_id: string;
+  status: string;
+  sequence: number;
+  input_summary: string | null;
+  output_summary: string | null;
+  validation_result: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AgentSubtask = {
+  id: string;
+  subagent_id: string;
+  status: string;
+  sequence: number;
+  title: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type AgentLineage = {
+  id: string;
+  source_file_id: string | null;
+  job_id: string | null;
+  asset_id: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
 export type AgentTaskDetail = AgentTask & {
   plan: AgentPlan | null;
   steps: AgentStep[];
   artifacts: AgentArtifact[];
+  decisions: AgentDecision[];
+  tool_calls: AgentToolCall[];
+  skill_invocations: AgentSkillInvocation[];
+  subtasks: AgentSubtask[];
   quality_judgement: AgentQualityJudgement | null;
+  lineage: AgentLineage | null;
 };
 
 export type AgentTaskCreateResponse = {
@@ -268,6 +341,11 @@ function mockAgentTask(
     plan: null,
     steps: [],
     artifacts: [],
+    decisions: [],
+    tool_calls: [],
+    skill_invocations: [],
+    subtasks: [],
     quality_judgement: null,
+    lineage: null,
   };
 }

@@ -131,7 +131,7 @@ make verify-web
 - Background execution now routes through the same persisted worker claim flow as `make agent-worker`. Agent tasks carry `worker_id`, `attempt_count`, `max_attempts`, lock, heartbeat, and retry timing fields.
 - URL input is a local governed placeholder only; remote URL fetching is intentionally not implemented in this local mode.
 - Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
-- Home upload and the Parse screen now create parser-agent tasks. Parse and Job Detail show first Agent Trace panels with timeline, plan, reasoning, artifacts, quality, and task status. Some legacy list views still read job endpoints.
+- Home upload and the Parse screen now create parser-agent tasks. Parse and Job Detail show richer Agent Trace panels with timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, worker state, and reasoning. Some legacy list views still read job endpoints.
 - MCP/tool gateway support currently exposes capability metadata, governance policy filtering, and persisted planning traces; real external MCP service execution is still pending.
 - Global search in the app shell is still mostly visual.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
@@ -151,7 +151,7 @@ Priority 1 is to turn the current orchestration platform into a single public **
 2. Make remaining REST screens read from or delegate to the core agent task model where possible.
 3. Deepen Home/Parse agent task UX with direct task detail navigation and multi-task history.
 4. Deepen policy controls around subagents and task-level data residency beyond the current tool/category/external-service gateway checks.
-5. Add richer UI treatment for tool policy decisions and skill metadata inside Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage panels.
+5. Add dedicated full-page agent task details and artifact diff/inspection views.
 
 ### Priority 2: Internal Capabilities Behind The Agent
 
@@ -162,9 +162,9 @@ Priority 1 is to turn the current orchestration platform into a single public **
 
 ### Priority 3: Agentic UI
 
-1. Expand Agent Plan and Agent Reasoning panels with richer artifact detail views.
-2. Deepen the agent timeline with parser alternatives, tool decisions, and fallback rationale.
-3. Add full artifact detail views for file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
+1. Add full agent task detail pages with shareable URLs.
+2. Add richer artifact inspection for file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
+3. Add parser alternative comparison and fallback rationale visualizations.
 4. Connect remaining shortcut/template flows to create real parser-agent tasks.
 5. Implement global search with a backend `/search` endpoint across files, jobs, assets, parsers, skills, and agent tasks.
 
