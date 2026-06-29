@@ -28,6 +28,7 @@ import {
   formatDuration,
   formatPercent,
   type SkillCategory,
+  type SkillDefinition,
   type SkillDetail,
   type SkillMutationPayload,
   type SkillStatus,
@@ -168,62 +169,40 @@ export default function SkillsPage() {
         )}
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[0.92fr_1.08fr]">
-        <div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(430px,0.95fr)_minmax(520px,1.05fr)]">
+        <section className="min-w-0">
           <div className="grid gap-3 md:grid-cols-2">
-          {loading ? Array.from({ length: 6 }).map((_, index) => <SkillCardSkeleton key={index} />) : null}
-          {!loading && filteredSkills.length === 0 ? (
-            <div className="md:col-span-2">
-              <EmptyState title="No skills found" description="Try clearing the search or filter selection." icon={FileText} />
-            </div>
-          ) : null}
-          {!loading ? filteredSkills.map((skill) => (
-            <button
-              key={skill.skillId}
-              className={clsx(
-                "rounded-lg border bg-white p-4 text-left shadow-panel transition hover:bg-surface",
-                selectedId === skill.skillId ? "border-accent bg-accent-soft/30" : "border-border",
-              )}
-              onClick={() => setSelectedId(skill.skillId)}
-              type="button"
-            >
-              <div className="flex gap-3">
-                <span className={clsx("grid h-12 w-12 shrink-0 place-items-center rounded-lg", selectedId === skill.skillId ? "bg-accent-soft text-accent" : "bg-info-soft text-info")}>
-                  <FileText className="h-6 w-6" aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <h3 className="truncate text-base font-bold text-ink">{skill.name}</h3>
-                  <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted">{skill.description}</p>
-                </div>
+            {loading ? Array.from({ length: 8 }).map((_, index) => <SkillCardSkeleton key={index} />) : null}
+            {!loading && filteredSkills.length === 0 ? (
+              <div className="md:col-span-2">
+                <EmptyState title="No skills found" description="Try clearing the search or filter selection." icon={FileText} />
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {skill.tags.map((tag) => <Tag key={tag}>{tag.toUpperCase()}</Tag>)}
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-2 text-xs">
-                <span className="font-bold text-muted">{skill.version}</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                <StatusPill status={statusTone(skill.status)}>{labelForStatus(skill.status)}</StatusPill>
-                <span className="text-muted">{skill.runCountLabel}</span>
-                <span className="text-muted">{skill.linkedParserCount} parsers</span>
-              </div>
-            </button>
-          )) : null}
+            ) : null}
+            {!loading ? filteredSkills.map((skill) => (
+              <SkillListCard
+                key={skill.skillId}
+                skill={skill}
+                selected={selectedId === skill.skillId}
+                onSelect={() => setSelectedId(skill.skillId)}
+              />
+            )) : null}
           </div>
           {!loading && filteredSkills.length ? (
-            <div className="mt-4 flex items-center justify-between text-sm text-muted">
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-sm text-muted shadow-panel">
               <span>Showing 1-{filteredSkills.length} of {filteredSkills.length}</span>
-              <span>{filteredSkills.length} skill{filteredSkills.length === 1 ? "" : "s"} loaded from backend</span>
+              <span className="font-semibold text-ink">8 per page</span>
             </div>
           ) : null}
-        </div>
+        </section>
 
-        {detailLoading ? <DetailSkeleton /> : null}
-        {!detailLoading && selectedSkill ? (
-          <Card className="overflow-hidden">
+        <section className="min-w-0 xl:sticky xl:top-4">
+          {detailLoading ? <DetailSkeleton /> : null}
+          {!detailLoading && selectedSkill ? (
+          <Card className="overflow-hidden border-accent/20">
             <div className="p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex gap-4">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
                   <FileText className="h-6 w-6" aria-hidden="true" />
                 </span>
                 <div>
@@ -243,7 +222,7 @@ export default function SkillsPage() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 border-b border-border pb-5 md:grid-cols-4">
+            <div className="mt-6 grid gap-4 border-b border-border pb-5 sm:grid-cols-2 lg:grid-cols-4">
               <DetailMetric label="Weekly Runs" value={selectedSkill.weeklyRuns.toLocaleString()} />
               <DetailMetric label="Last Updated" value={selectedSkill.lastUpdated} />
               <DetailMetric label="Success Rate" value={formatPercent(selectedSkill.successRate)} positive={selectedSkill.successRate !== null} />
@@ -260,7 +239,7 @@ export default function SkillsPage() {
                 ["Workflow Usage", selectedSkill.workflowUsage],
                 ["Recent Versions", selectedSkill.recentVersions.join(", ")],
               ].map(([label, value]) => (
-                <div key={label} className="grid grid-cols-[150px_1fr_20px] items-center gap-4 px-4 py-3 text-sm">
+                <div key={label} className="grid grid-cols-[130px_1fr_20px] items-center gap-4 px-4 py-3 text-sm">
                   <span className="font-bold text-ink">{label}</span>
                   <span className="truncate text-muted">{value}</span>
                   <ChevronRight className="h-4 w-4 text-muted" />
@@ -269,7 +248,7 @@ export default function SkillsPage() {
             </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 border-t border-border p-4">
+            <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-3">
               <ActionButton variant="secondary" icon={FileText} onClick={() => void actions.editSkill(selectedSkill)} disabled={actions.busyAction === `edit-${selectedSkill.skillId}`}>
                 Edit Skill
               </ActionButton>
@@ -281,12 +260,13 @@ export default function SkillsPage() {
               </ActionButton>
             </div>
           </Card>
-        ) : null}
-        {!detailLoading && !selectedSkill && !loading ? (
-          <Card className="p-5">
-            <EmptyState title="Select a skill" description={detailError ?? "Choose a skill card to view registry details."} icon={FileText} />
-          </Card>
-        ) : null}
+          ) : null}
+          {!detailLoading && !selectedSkill && !loading ? (
+            <Card className="p-5">
+              <EmptyState title="Select a skill" description={detailError ?? "Choose a skill card to view registry details."} icon={FileText} />
+            </Card>
+          ) : null}
+        </section>
       </div>
 
       {actions.modal?.type === "create" ? (
@@ -321,6 +301,51 @@ export default function SkillsPage() {
         );
       })() : null}
     </div>
+  );
+}
+
+function SkillListCard({
+  onSelect,
+  selected,
+  skill,
+}: {
+  onSelect: () => void;
+  selected: boolean;
+  skill: SkillDefinition;
+}) {
+  return (
+    <button
+      className={clsx(
+        "group min-h-[138px] rounded-lg border bg-white p-4 text-left shadow-panel transition hover:-translate-y-0.5 hover:border-accent/40 hover:bg-surface",
+        selected ? "border-accent bg-accent-soft/30 ring-1 ring-accent/20" : "border-border",
+      )}
+      onClick={onSelect}
+      type="button"
+      aria-pressed={selected}
+    >
+      <div className="flex gap-3">
+        <span className={clsx("grid h-12 w-12 shrink-0 place-items-center rounded-lg", selected ? "bg-accent-soft text-accent" : "bg-info-soft text-info")}>
+          <FileText className="h-6 w-6" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-bold text-ink">{skill.name}</h3>
+          <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted">{skill.description}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex min-h-[24px] flex-wrap gap-1.5">
+        {skill.tags.slice(0, 4).map((tag) => <Tag key={tag}>{tag.toUpperCase()}</Tag>)}
+      </div>
+      <div className="mt-4 grid grid-cols-[auto_auto_1fr_auto] items-center gap-2 text-xs">
+        <span className="font-bold text-muted">{skill.version}</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+        <span className="font-semibold text-success">{labelForStatus(skill.status)}</span>
+        <span className="truncate text-right text-muted">{skill.runCountLabel}</span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
+        <span>{skill.linkedParserCount} parser{skill.linkedParserCount === 1 ? "" : "s"}</span>
+        <span className="truncate">{skill.category}</span>
+      </div>
+    </button>
   );
 }
 

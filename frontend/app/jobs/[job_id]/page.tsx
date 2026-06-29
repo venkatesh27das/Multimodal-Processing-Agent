@@ -71,11 +71,27 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   }, [params.job_id]);
 
   const detail = data;
-  const qualityScore = pct(detail?.quality?.extraction_confidence ?? 0.92);
-  const fileName = detail?.file?.original_filename ?? "Master Services Agreement.pdf";
-  const parser = detail?.plan?.selected_parser_id ?? detail?.job.parser_id ?? "Contract Parser v3";
-  const fallback = detail?.plan?.fallback_parser_id ?? "Financial Parser v2";
-  const duration = formatDurationLabel(detail?.assets[0]?.latency_ms ?? 122000);
+  const firstAsset = detail?.assets[0] ?? null;
+  const qualityScore = pct(detail?.quality?.extraction_confidence ?? detail?.quality?.parser_confidence ?? null);
+  const qualityValue = Math.round((detail?.quality?.extraction_confidence ?? detail?.quality?.parser_confidence ?? 0) * 100);
+  const fileName = detail?.file?.original_filename ?? `File ${shortId(detail?.job.file_id ?? params.job_id)}`;
+  const parser = detail?.plan?.selected_parser_id ?? detail?.job.parser_id ?? firstAsset?.parser_used ?? "Not selected";
+  const fallback = detail?.plan?.fallback_parser_id ?? null;
+  const skill = detail?.plan?.selected_skill_id ?? detail?.job.skill_id ?? firstAsset?.skill_used ?? null;
+  const duration = formatDurationLabel(firstAsset?.latency_ms ?? null);
+  const profileTag = formatProfileTag(detail?.profile?.file_type ?? detail?.file?.file_type);
+  const uploadedAt = formatDateTime(detail?.file?.uploaded_at ?? detail?.job.created_at);
+  const completedAt = formatDateTime(detail?.job.updated_at);
+  const pages = detail?.profile?.page_count === null || detail?.profile?.page_count === undefined
+    ? "--"
+    : String(detail.profile.page_count);
+  const language = detail?.profile?.language ?? "--";
+  const fallbackDetail = fallback ? "with fallback" : "no fallback";
+  const reviewDecision = detail?.quality?.human_review_required ? "Needs review" : "Auto-accepted";
+  const reviewTone = detail?.quality?.human_review_required ? "text-warning" : "text-success";
+  const parsedText = firstAsset?.parsed_text?.trim() || null;
+  const entities = firstAsset?.entities ?? [];
+  const tables = firstAsset?.tables ?? [];
 
   if (!detail) {
     return <Card className="p-4 text-sm text-muted">Loading job detail...</Card>;
@@ -95,16 +111,16 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
             <div>
               <h2 className="text-xl font-bold text-ink">{fileName}</h2>
               <p className="mt-1 text-sm text-muted">
-                {(detail.file?.file_type ?? "PDF").toUpperCase()} · {formatBytes(detail.file?.size_bytes ?? 2_400_000)} · Uploaded Mar 24, 2025 10:14 AM
+                {(detail.file?.file_type ?? "unknown").toUpperCase()} · {formatBytes(detail.file?.size_bytes ?? 0)} · Uploaded {uploadedAt}
               </p>
             </div>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <HeroMetric icon={CheckCircle2} label="Status" value="Completed" detail="Completed Mar 24, 2025 10:16 AM" tone="success" />
-          <HeroMetric icon={Star} label="Quality Score" value={qualityScore} detail="High quality" tone="info" />
-          <HeroMetric icon={GitBranch} label="Parser Strategy" value={parser} detail="with 1 fallback" tone="purple" />
-          <HeroMetric icon={Clock3} label="Duration" value={duration} detail="Avg for similar: 1m 48s" tone="warning" />
+          <HeroMetric icon={CheckCircle2} label="Status" value={formatLabel(detail.job.status)} detail={`Updated ${completedAt}`} tone="success" />
+          <HeroMetric icon={Star} label="Quality Score" value={qualityScore} detail={detail.quality?.quality_status ? formatLabel(detail.quality.quality_status) : "Not evaluated"} tone="info" />
+          <HeroMetric icon={GitBranch} label="Parser Strategy" value={parser} detail={fallbackDetail} tone="purple" />
+          <HeroMetric icon={Clock3} label="Duration" value={duration} detail="Recorded parser latency" tone="warning" />
         </div>
       </div>
 
@@ -121,27 +137,28 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
             <dl className="mt-3 space-y-3 text-sm">
               <DetailRow label="File Name" value={fileName} />
               <DetailRow label="File Type" value={detail.file?.mime_type ?? "application/pdf"} />
-              <DetailRow label="File Size" value={formatBytes(detail.file?.size_bytes ?? 2_400_000)} />
-              <DetailRow label="Pages" value={String(detail.profile?.page_count ?? 24)} />
-              <DetailRow label="Language" value={detail.profile?.language ?? "English"} />
-              <DetailRow label="Uploaded By" value="Jane Thompson" />
+              <DetailRow label="File Size" value={formatBytes(detail.file?.size_bytes ?? 0)} />
+              <DetailRow label="Pages" value={pages} />
+              <DetailRow label="Language" value={language} />
+              <DetailRow label="Uploaded By" value={detail.file?.created_by ?? "--"} />
               <DetailRow label="Source" value={detail.file?.source ?? "Upload"} />
-              <DetailRow label="Checksum" value={shortId(detail.file?.checksum_sha256 ?? "4b8d7f2c1e9a")} />
+              <DetailRow label="Checksum" value={detail.file?.checksum_sha256 ? shortId(detail.file.checksum_sha256) : "--"} />
             </dl>
           </Card>
 
           <Card className="p-4">
-            <SectionTitle title="Detected Document Profile" action={<Tag tone="success">Contract</Tag>} />
+            <SectionTitle title="Detected Document Profile" action={<Tag tone="success">{profileTag}</Tag>} />
             <dl className="mt-3 space-y-3 text-sm">
-              <DetailRow label="Document Type" value="Master Services Agreement" />
-              <DetailRow label="Subtype" value="Services Agreement" />
-              <DetailRow label="Industry" value="Technology" />
-              <DetailRow label="Jurisdiction" value="Delaware, USA" />
+              <DetailRow label="Modalities" value={detail.profile?.modalities?.join(", ") || "--"} />
+              <DetailRow label="Layout" value={formatLabel(detail.profile?.layout_complexity ?? "--")} />
+              <DetailRow label="Tables" value={formatLikelihood(detail.profile?.table_likelihood)} />
+              <DetailRow label="Images" value={formatLikelihood(detail.profile?.image_likelihood)} />
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-muted">Confidence</dt>
+                <dt className="text-muted">Text Layer</dt>
                 <dd className="flex items-center gap-3 font-semibold text-ink">
-                  94%
-                  <span className="h-1.5 w-24 rounded-full bg-slate-100"><span className="block h-full w-[94%] rounded-full bg-success" /></span>
+                  {detail.profile?.has_text_layer === null || detail.profile?.has_text_layer === undefined
+                    ? "--"
+                    : detail.profile.has_text_layer ? "Detected" : "Not detected"}
                 </dd>
               </div>
             </dl>
@@ -154,8 +171,8 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
             <div className="overflow-hidden rounded-md border border-border">
               {[
                 ["Primary Parser (Selected)", parser, "Selected"],
-                ["Fallback Parser", fallback, ""],
-                ["Skill Used", detail.plan?.selected_skill_id ?? "Contract & Clause Extraction", ""],
+                ["Fallback Parser", fallback ?? "No fallback", ""],
+                ["Skill Used", skill ?? "No skill selected", ""],
               ].map(([label, value, badge]) => (
                 <div key={label} className="border-b border-border p-4 last:border-b-0">
                   <p className="text-xs font-bold text-muted">{label}</p>
@@ -166,18 +183,18 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
               <div className="p-4 text-sm">
                 <p className="font-bold text-ink">Reasoning Summary</p>
                 <p className="mt-2 text-muted">
-                  Document classified as a Services Agreement based on structural cues, payment terms, and language patterns.
+                  {detail.plan?.decision_reason ?? detail.profile?.recommended_parsing_strategy ?? "No planner rationale was recorded for this job."}
                 </p>
               </div>
             </div>
             <div className="space-y-4">
               {[
-                ["Intake", "File received and queued", "10:14:01 AM", "success"],
-                ["Profiling", "Document profiled successfully", "10:14:07 AM", "success"],
-                ["Parsing", `${parser} executed`, "10:14:18 AM", "success"],
-                ["Validation", "Output validated", "10:15:28 AM", "success"],
-                ["Fallback Check", "No fallback required", "10:15:34 AM", "warning"],
-                ["Publish", "Outputs published", "10:16:03 AM", "success"],
+                ["Intake", "File received", uploadedAt, "success"],
+                ["Profiling", detail.profile ? "Document profile recorded" : "Profile pending", uploadedAt, detail.profile ? "success" : "warning"],
+                ["Parsing", `${parser} executed`, completedAt, "success"],
+                ["Validation", detail.quality?.quality_explanation ?? "Quality report pending", completedAt, detail.quality ? "success" : "warning"],
+                ["Fallback Check", fallback ? `${fallback} available` : "No fallback required", completedAt, fallback ? "warning" : "success"],
+                ["Publish", firstAsset ? "Outputs published" : "No asset published yet", firstAsset ? formatDateTime(firstAsset.created_at) : completedAt, firstAsset ? "success" : "warning"],
               ].map(([title, text, time, tone]) => (
                 <div key={title} className="grid grid-cols-[20px_1fr_auto] gap-3 text-sm">
                   {tone === "warning" ? <AlertTriangle className="h-4 w-4 text-warning" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
@@ -197,9 +214,9 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
           <Card className="p-4">
             <SectionTitle title="Quality Report" action={<span className="text-xs font-bold text-info">How is this score calculated?</span>} />
             <div className="mt-4 space-y-4">
-              <QualityBar label="Completeness" value={94} />
-              <QualityBar label="Consistency" value={90} />
-              <QualityBar label="Confidence" value={92} />
+              <QualityBar label="Completeness" value={scoreToPercent(detail.quality?.completeness_score)} />
+              <QualityBar label="Consistency" value={scoreToPercent(detail.quality?.consistency_score)} />
+              <QualityBar label="Confidence" value={qualityValue} />
               <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted">Overall Quality Score</span>
@@ -207,7 +224,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                 </div>
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-sm text-muted">Review Decision</span>
-                  <span className="font-bold text-success">Auto-accepted</span>
+                  <span className={`font-bold ${reviewTone}`}>{reviewDecision}</span>
                 </div>
               </div>
             </div>
@@ -231,27 +248,23 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_1fr_1.1fr]">
           <PreviewPanel title="Extracted Text (Preview)" action="View full text">
             <pre className="max-h-44 overflow-hidden whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs text-ink">
-{`THIS MASTER SERVICES AGREEMENT ("Agreement") is made and entered into as of March 1, 2025 by and between Acme Corporation, a Delaware corporation with principal place of business at 123 Market Street, San Francisco, CA 94105...`}
+              {parsedText ?? "No text preview is available for this asset yet."}
             </pre>
           </PreviewPanel>
-          <PreviewPanel title="Entities (Top 10)" action="View all">
+          <PreviewPanel title={`Entities (${entities.length})`} action="View all">
             <div className="grid grid-cols-2 gap-2 text-xs">
-              {["Acme Corporation", "Globex Solutions, LLC", "March 1, 2025", "$1,250,000", "Exhibit A", "San Francisco, CA", "Austin, TX", "Delaware", "12 months", "Confidential Information"].map((item, index) => (
+              {(entities.length ? entities.slice(0, 10).map(entityLabel) : ["No entities extracted"]).map((item, index) => (
                 <span key={item} className={`rounded-md px-2 py-1 font-semibold ${index % 3 === 0 ? "bg-purple-soft text-purple" : index % 3 === 1 ? "bg-success-soft text-success" : "bg-info-soft text-info"}`}>{item}</span>
               ))}
             </div>
           </PreviewPanel>
-          <PreviewPanel title="Tables (2)" action="View all">
+          <PreviewPanel title={`Tables (${tables.length})`} action="View all">
             <table className="w-full text-left text-xs">
               <thead className="bg-surface text-muted">
-                <tr><th className="p-2">Milestone</th><th className="p-2">Description</th><th className="p-2">Amount</th><th className="p-2">Due Date</th></tr>
+                <tr>{tableHeaders(tables[0]).map((header) => <th key={header} className="p-2">{header}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {[
-                  ["1", "Project Kickoff", "$250,000", "Net 15"],
-                  ["2", "Phase 1 Delivery", "$500,000", "Net 15"],
-                  ["3", "Phase 2 Delivery", "$500,000", "Net 15"],
-                ].map((row) => <tr key={row[0]}>{row.map((cell) => <td key={cell} className="p-2">{cell}</td>)}</tr>)}
+                {tableRows(tables[0]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="p-2">{cell}</td>)}</tr>)}
               </tbody>
             </table>
           </PreviewPanel>
@@ -327,6 +340,65 @@ function formatDurationLabel(value: number | null | undefined) {
   const minutes = Math.floor(value / 60_000);
   const seconds = Math.round((value % 60_000) / 1000);
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "--";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatLikelihood(value: number | null | undefined) {
+  if (value === null || value === undefined) return "--";
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatProfileTag(value: string | null | undefined) {
+  return value ? value.toUpperCase() : "Profile";
+}
+
+function scoreToPercent(value: number | null | undefined) {
+  if (value === null || value === undefined) return 0;
+  return Math.max(0, Math.min(100, Math.round(value * 100)));
+}
+
+function entityLabel(entity: Record<string, unknown>) {
+  const value = entity.name ?? entity.text ?? entity.value ?? entity.label ?? entity.id;
+  return typeof value === "string" && value.trim() ? value : "Entity";
+}
+
+function tableHeaders(table: Record<string, unknown> | undefined) {
+  const rows = tableRows(table);
+  if (!rows.length) return ["Output"];
+  return rows[0].map((_, index) => `Column ${index + 1}`);
+}
+
+function tableRows(table: Record<string, unknown> | undefined) {
+  const rows = table?.rows;
+  if (!Array.isArray(rows) || !rows.length) return [["No tables extracted"]];
+  return rows.slice(0, 5).map((row) => {
+    if (!Array.isArray(row)) return [stringifyCell(row)];
+    return row.map(stringifyCell);
+  });
+}
+
+function stringifyCell(value: unknown) {
+  if (value === null || value === undefined) return "--";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
 
 function demoDetail(jobId: string): DetailState {

@@ -42,7 +42,7 @@ export function useSkills() {
       const nextKpis = await skillsApi.getSkillMetrics(nextSkills);
       setSkills(nextSkills);
       setKpis(nextKpis);
-      setSelectedId((current) => current && nextSkills.some((skill) => skill.skillId === current) ? current : nextSkills[1]?.skillId ?? nextSkills[0]?.skillId ?? null);
+      setSelectedId((current) => current && nextSkills.some((skill) => skill.skillId === current) ? current : nextSkills[0]?.skillId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load skills.");
       setSkills([]);
