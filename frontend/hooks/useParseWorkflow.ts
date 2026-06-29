@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  agentApi,
+  agentStatusToJobStatus,
+  isTerminalAgentStatus,
+  type AgentTaskDetail,
+} from "@/api/agent";
 import type { UploadedFile } from "@/api/files";
 import {
   createParsingPlan,
@@ -38,6 +44,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
   const [jobRuns, setJobRuns] = useState<ParseJobRunResponse[]>([]);
   const [jobSnapshots, setJobSnapshots] = useState<Record<string, ParseJob>>({});
   const [events, setEvents] = useState<JobEvent[]>([]);
+  const [agentTask, setAgentTask] = useState<AgentTaskDetail | null>(null);
   const [toast, setToast] = useState<ParseWorkflowToast | null>(null);
   const planRequestId = useRef(0);
 
@@ -130,16 +137,21 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     setJobRuns([]);
     setEvents([]);
     try {
-      const responses: ParseJobRunResponse[] = [];
-      for (const file of readyFiles) {
-        const response = isDemoFile(file.fileId)
-          ? demoRunResponse(file, objective, configuration, responses.length, readyFiles.length)
-          : await jobsApi.createParseJob({
-              fileId: file.fileId as string,
+      const responses: ParseJobRunResponse[] = readyFiles.every((file) => isDemoFile(file.fileId))
+        ? readyFiles.map((file, index) =>
+            demoRunResponse(file, objective, configuration, index, readyFiles.length),
+          )
+        : agentTaskToRunResponses(
+            await agentApi.createTask({
+              fileIds: readyFiles.map((file) => file.fileId as string),
               objective,
               configuration,
-            });
-        responses.push(response);
+              title: `Parse ${readyFiles.length} file${readyFiles.length === 1 ? "" : "s"}`,
+            }),
+            readyFiles,
+          );
+      if (!readyFiles.every((file) => isDemoFile(file.fileId))) {
+        setAgentTask(await agentApi.getTask(responses[0].job.id));
       }
       setJobRuns(responses);
       setJobSnapshots(
@@ -150,7 +162,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
       );
       setEvents(buildInitialEvents(responses));
       setStep("running");
-      setToast({ tone: "success", message: "Parsing run created successfully." });
+      setToast({ tone: "success", message: "Parser-agent task created successfully." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to create parsing run.";
       setJobError(message);
@@ -162,6 +174,31 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
 
   useEffect(() => {
     if (step !== "running" || !jobRuns.length) return;
+    if (agentTask) {
+      const taskId = agentTask.id;
+      const interval = window.setInterval(async () => {
+        const task = await agentApi.getTask(taskId).catch(() => null);
+        if (!task) return;
+        setAgentTask(task);
+        const nextRuns = agentTaskToRunResponses(
+          task,
+          uploadedFiles.filter((file) => file.fileId),
+        );
+        setJobRuns(nextRuns);
+        setJobSnapshots(
+          nextRuns.reduce<Record<string, ParseJob>>((acc, response) => {
+            acc[response.job.id] = response.job;
+            return acc;
+          }, {}),
+        );
+        const backendEvents = await agentApi.getEvents(taskId).catch(() => []);
+        setEvents((current) => mergeEvents(current, backendEvents));
+        if (isTerminalAgentStatus(task.status)) {
+          window.clearInterval(interval);
+        }
+      }, 2000);
+      return () => window.clearInterval(interval);
+    }
     const jobIds = jobRuns.map((run) => run.job.id);
     const interval = window.setInterval(async () => {
       if (jobIds.every(isDemoJob)) {
@@ -188,7 +225,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
       }
     }, 2500);
     return () => window.clearInterval(interval);
-  }, [jobRuns, step]);
+  }, [agentTask, jobRuns, step, uploadedFiles]);
 
   const progress: JobProgress = useMemo(() => {
     const snapshots = Object.values(jobSnapshots);
@@ -208,6 +245,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     setJobRuns([]);
     setJobSnapshots({});
     setEvents([]);
+    setAgentTask(null);
     setToast(null);
   }, []);
 
@@ -222,6 +260,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     jobError,
     jobRuns,
     jobSnapshots,
+    agentTask,
     progress,
     events,
     toast,
@@ -332,6 +371,132 @@ function demoRunResponse(
     assets: [],
     review_item: null,
   };
+}
+
+function agentTaskToRunResponses(
+  task: AgentTaskDetail,
+  files: UploadedFile[],
+): ParseJobRunResponse[] {
+  const fileIds = materializedFileIds(task, files);
+  const status = agentStatusToJobStatus(task.status);
+  const assetIds = Array.isArray(task.input_payload.asset_ids)
+    ? task.input_payload.asset_ids.map(String)
+    : [];
+  const jobIds = Array.isArray(task.input_payload.job_ids)
+    ? task.input_payload.job_ids.map(String)
+    : [];
+  return fileIds.map((fileId, index) => {
+    const file = files.find((item) => item.fileId === fileId);
+    const syntheticJobId = index === 0 ? task.id : `${task.id}-${index + 1}`;
+    const jobId = jobIds[index] ?? syntheticJobId;
+    const parserId = task.plan?.selected_parser_id ?? parserForTaskArtifact(task, fileId) ?? "agent-selected";
+    return {
+      job: {
+        id: syntheticJobId,
+        file_id: fileId,
+        status,
+        parser_id: parserId,
+        skill_id: task.plan?.selected_skill_id ?? null,
+        quality_status: task.quality_judgement?.status ?? (status === "queued" ? "not_evaluated" : "passed"),
+        progress_percent: progressForAgentStatus(task.status),
+        current_stage: stageForAgentStatus(task.status),
+        processed_files: isTerminalAgentStatus(task.status) ? fileIds.length : Math.min(index, fileIds.length),
+        total_files: fileIds.length,
+        created_at: task.created_at,
+        updated_at: task.updated_at,
+      },
+      plan: {
+        id: `${task.id}-plan-${index + 1}`,
+        job_id: jobId,
+        file_id: fileId,
+        selected_parser_id: parserId,
+        fallback_parser_id: task.plan?.fallback_parser_id ?? null,
+        selected_skill_id: task.plan?.selected_skill_id ?? null,
+        decision_reason: task.plan?.summary ?? task.summary ?? "Parser-agent plan is running.",
+        output_contract: task.requested_output_contract,
+        expected_assets: ["Parsed text", "Tables", "Entities", "Metadata", "Lineage"],
+        quality_threshold: task.plan?.quality_threshold ?? 0.85,
+        cost_profile: {},
+        human_review_policy: task.governance_constraints,
+        created_at: task.created_at,
+      },
+      quality: {
+        id: `${task.id}-quality-${index + 1}`,
+        job_id: jobId,
+        quality_status: task.quality_judgement?.status ?? "not_evaluated",
+        extraction_confidence: numberDimension(task, "extraction_confidence"),
+        parser_confidence: numberDimension(task, "parser_confidence"),
+        human_review_required: task.status === "awaiting_review",
+        created_at: task.updated_at,
+        quality_explanation: task.quality_judgement?.summary ?? "Agent quality judgement is pending.",
+      },
+      assets: assetIds[index]
+        ? [{
+            id: assetIds[index],
+            asset_id: assetIds[index],
+            job_id: jobId,
+            file_id: fileId,
+            parser_used: parserId,
+            fallback_used: false,
+            latency_ms: null,
+            document_metadata: {},
+            quality_report: {},
+            created_at: task.updated_at,
+          }]
+        : [],
+      review_item: null,
+    };
+  });
+}
+
+function materializedFileIds(task: AgentTaskDetail, files: UploadedFile[]): string[] {
+  const fromPayload = task.input_payload.materialized_file_ids;
+  if (Array.isArray(fromPayload) && fromPayload.length) return fromPayload.map(String);
+  const fromFiles = files.map((file) => file.fileId).filter((fileId): fileId is string => Boolean(fileId));
+  return fromFiles.length ? fromFiles : task.file_id ? [task.file_id] : [];
+}
+
+function parserForTaskArtifact(task: AgentTaskDetail, fileId: string): string | null {
+  const artifact = task.artifacts.find(
+    (item) =>
+      item.kind === "parsing_plan" &&
+      typeof item.payload.file_id === "string" &&
+      item.payload.file_id === fileId,
+  );
+  return typeof artifact?.payload.selected_parser_id === "string"
+    ? artifact.payload.selected_parser_id
+    : null;
+}
+
+function numberDimension(task: AgentTaskDetail, key: string): number | null {
+  const value = task.quality_judgement?.dimensions[key];
+  return typeof value === "number" ? value : null;
+}
+
+function progressForAgentStatus(status: AgentTaskDetail["status"]): number {
+  const progressByStatus: Record<AgentTaskDetail["status"], number> = {
+    submitted: 5,
+    accepted: 12,
+    observing: 24,
+    planning: 38,
+    executing: 58,
+    evaluating: 72,
+    repairing: 82,
+    publishing: 92,
+    awaiting_review: 96,
+    completed: 100,
+    cancelled: 0,
+    failed: 80,
+  };
+  return progressByStatus[status];
+}
+
+function stageForAgentStatus(status: AgentTaskDetail["status"]): ParseJob["current_stage"] {
+  if (status === "submitted" || status === "accepted") return "intake";
+  if (status === "observing" || status === "planning") return "profiling";
+  if (status === "executing" || status === "repairing") return "parsing";
+  if (status === "evaluating") return "validation";
+  return "publish";
 }
 
 function buildInitialEvents(responses: ParseJobRunResponse[]): JobEvent[] {

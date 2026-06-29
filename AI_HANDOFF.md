@@ -130,12 +130,12 @@ make verify-web
 - Background execution is currently in-process via FastAPI `BackgroundTasks`; a production queue/worker remains pending for multi-instance deployments and crash recovery.
 - URL input is a local governed placeholder only; remote URL fetching is intentionally not implemented in this local mode.
 - Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
-- The canonical agent trace is persisted for the synchronous flow, but existing UI screens still mostly read legacy job endpoints instead of the agent task trace.
+- The Parse screen now creates parser-agent tasks and shows a first Agent Trace panel with timeline, plan, reasoning, artifacts, quality, and task status. Some legacy job views still read job endpoints.
 - MCP/tool gateway support currently exposes local capability metadata and governance policy filtering; real external MCP service execution is still pending.
 - Global search in the app shell is still mostly visual.
 - Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
-- Human review actions need durable approve/reject persistence.
+- Human review approve/reject decisions are persisted through `/api/v1/review/items/{id}/approve` and `/api/v1/review/items/{id}/reject`, with audit events and a backend-backed Review Queue page.
 - Job execution is synchronous; a production version needs a queue and worker.
 - Azure Document Intelligence, audio transcription, and video parsing are placeholders.
 - Authentication, authorization, tenant isolation, and secrets management are not implemented.
@@ -148,8 +148,8 @@ Priority 1 is to turn the current orchestration platform into a single public **
 ### Priority 1: A2A Multimodal Parser Agent
 
 1. Replace the in-process background worker with a durable queue/worker for production.
-2. Make existing REST screens read from or delegate to the core agent task model where possible.
-3. Connect Home and Parse upload flows to `POST /api/v1/agent/tasks/upload`.
+2. Make remaining REST screens read from or delegate to the core agent task model where possible.
+3. Connect Home drag/drop flow to `POST /api/v1/agent/tasks/upload`.
 4. Persist explicit MCP/tool gateway planning records for non-parser tools when they are selected.
 5. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
 6. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
@@ -163,15 +163,15 @@ Priority 1 is to turn the current orchestration platform into a single public **
 
 ### Priority 3: Agentic UI
 
-1. Add Agent Plan and Agent Reasoning panels to Parse and Job Detail.
-2. Show the agent timeline: observed, planned, parser selected, skill invoked, fallback attempted, quality judged, review requested, asset published.
-3. Show task artifacts such as file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
+1. Expand Agent Plan and Agent Reasoning panels into Job Detail.
+2. Deepen the agent timeline with parser alternatives, tool decisions, and fallback rationale.
+3. Add full artifact detail views for file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
 4. Connect Home drag/drop to create a real parser-agent task.
 5. Implement global search with a backend `/search` endpoint across files, jobs, assets, parsers, skills, and agent tasks.
 
 ### Priority 4: Operational Hardening
 
-1. Add persisted review decisions and reflect them in Review Queue, Home, Jobs, and Job Detail.
+1. Reflect persisted review decisions in Home, Jobs, and Job Detail.
 2. Add backend trend series for dashboard sparklines instead of hiding them.
 3. Add tests for dashboard, review summary, jobs metrics, parser metrics, and new agent task routes.
 4. Add a background worker and async job/task state transitions.

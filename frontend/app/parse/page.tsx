@@ -33,6 +33,7 @@ import Link from "next/link";
 import type { DragEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import type { UploadedFile } from "@/api/files";
+import type { AgentTaskDetail } from "@/api/agent";
 import type {
   JobEvent,
   JobProgress,
@@ -148,6 +149,7 @@ export default function ParsePage() {
   if (workflow.step === "running") {
     return (
       <RunningState
+        agentTask={workflow.agentTask}
         events={workflow.events}
         files={upload.uploadedFiles}
         jobRuns={workflow.jobRuns}
@@ -673,6 +675,7 @@ function ReviewState({
 }
 
 function RunningState({
+  agentTask,
   events,
   files,
   jobRuns,
@@ -680,6 +683,7 @@ function RunningState({
   onReset,
   progress,
 }: {
+  agentTask: AgentTaskDetail | null;
   events: JobEvent[];
   files: UploadedFile[];
   jobRuns: ParseJobRunResponse[];
@@ -803,6 +807,8 @@ function RunningState({
               ))}
             </div>
           </Card>
+
+          {agentTask ? <AgentTracePanel task={agentTask} /> : null}
         </div>
 
         <div className="space-y-4">
@@ -837,6 +843,75 @@ function RunningState({
       </div>
     </div>
   );
+}
+
+function AgentTracePanel({ task }: { task: AgentTaskDetail }) {
+  const reasoning = task.artifacts.find((artifact) => artifact.kind === "agent_reasoning");
+  return (
+    <Card className="p-4">
+      <SectionHeader
+        title="Agent trace"
+        description="Backend agent task timeline, plan, reasoning, quality, and artifacts."
+        action={<StatusPill status={task.status === "failed" ? "failed" : task.status === "awaiting_review" ? "review" : task.status === "completed" ? "completed" : "queued"}>{task.status.replace("_", " ")}</StatusPill>}
+      />
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <TraceSummary label="Task" value={task.id} detail={task.summary ?? "Agent task is running."} />
+        <TraceSummary label="Parser" value={task.plan?.selected_parser_id ?? "Pending"} detail={task.plan?.summary ?? "Planner has not published a final strategy yet."} />
+        <TraceSummary label="Quality" value={task.quality_judgement?.status ?? "Pending"} detail={task.quality_judgement?.summary ?? "Quality judgement pending."} />
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">Timeline</p>
+          {(task.steps.length ? task.steps : fallbackAgentSteps(task.status)).map((step) => (
+            <div key={step.id} className="grid grid-cols-[88px_100px_1fr] gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="font-bold capitalize text-ink">{step.kind}</span>
+              <StatusPill status={step.status === "completed" ? "completed" : step.status === "failed" ? "failed" : step.status === "skipped" ? "queued" : "review"}>{step.status}</StatusPill>
+              <span className="text-muted">{step.summary}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">Artifacts</p>
+          <div className="mt-2 space-y-2">
+            {task.artifacts.slice(0, 8).map((artifact) => (
+              <div key={artifact.id} className="rounded-lg border border-border px-3 py-2">
+                <p className="text-sm font-bold text-ink">{artifact.title}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-muted">{artifact.summary}</p>
+              </div>
+            ))}
+            {!task.artifacts.length ? <p className="text-sm text-muted">Artifacts will appear as the agent publishes trace records.</p> : null}
+          </div>
+        </div>
+      </div>
+      {reasoning ? (
+        <div className="mt-4 rounded-lg border border-border bg-surface p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">Reasoning summary</p>
+          <p className="mt-2 text-sm text-ink">{reasoning.summary}</p>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function TraceSummary({ detail, label, value }: { detail: string; label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-bold text-ink">{value}</p>
+      <p className="mt-1 line-clamp-2 text-xs text-muted">{detail}</p>
+    </div>
+  );
+}
+
+function fallbackAgentSteps(status: AgentTaskDetail["status"]) {
+  return [
+    {
+      id: "pending-agent-step",
+      kind: status === "accepted" ? "accepted" : "executing",
+      status: "running",
+      summary: "Waiting for persisted agent step records.",
+    },
+  ];
 }
 
 function UploadedFileList({
