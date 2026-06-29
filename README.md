@@ -10,7 +10,7 @@ The project is intentionally split between deterministic enterprise controls and
 - File profiling with modality, file type, text/scanned signals, and recommended strategy.
 - Parser registry with local parsers and placeholder managed/media adapters.
 - Parser selection, planning, synchronous execution, fallback handling, quality evaluation, and asset publishing.
-- A2A-style Multimodal Parser Agent API with Agent Card, task lifecycle, messages, artifacts, events, reasoning trace, quality judgement, and lineage for the current synchronous file-id flow.
+- Google ADK-backed A2A-style Multimodal Parser Agent API with Agent Card, task lifecycle, messages, artifacts, events, reasoning trace, quality judgement, and lineage for the current synchronous flow.
 - Skills registry backed by folder-based skill packs in `backend/app/skills`.
 - Observability, audit, dashboard, jobs, parser, skill, review, and asset APIs.
 - Next.js enterprise console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
@@ -33,6 +33,7 @@ The project is intentionally split between deterministic enterprise controls and
 
 ```text
 backend/app/api/routes      FastAPI route modules
+backend/app/agent_adk       Google ADK agent runtime and tool wrappers
 backend/app/services        orchestration, profiling, selection, quality, audit, observability
 backend/app/parsers         parser adapters and parser base contracts
 backend/app/skills          folder-based skill packs
@@ -99,6 +100,13 @@ Agent Card:
 ```bash
 curl http://localhost:8000/.well-known/agent-card.json
 curl http://localhost:8000/api/v1/agent/card
+```
+
+Create an agent task directly from an upload:
+
+```bash
+curl -F "file=@sample_files/invoice.html;type=text/html" \
+  http://localhost:8000/api/v1/agent/tasks/upload
 ```
 
 API docs:
@@ -225,6 +233,17 @@ curl -X POST http://localhost:8000/api/v1/agent/tasks \
       "external_services_allowed": true
     }
   }'
+```
+
+The parser agent uses Google ADK internally. FastAPI remains the public API boundary,
+and SQLAlchemy remains the durable system of record for task state, artifacts,
+quality, audit, and lineage.
+
+Task events are available both as JSON and as an SSE-compatible stream:
+
+```bash
+curl http://localhost:8000/api/v1/agent/tasks/{task_id}/events
+curl http://localhost:8000/api/v1/agent/tasks/{task_id}/events/stream
 ```
 
 Operational checks:

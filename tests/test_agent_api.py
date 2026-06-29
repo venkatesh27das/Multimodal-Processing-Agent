@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.app.api.routes.agent import get_db
+from backend.app.core.config import settings
 from backend.app.db.base import Base
 from backend.app.db.seed import seed_registry_data
 from backend.app.domain.enums import FileType, JobStatus, Modality
@@ -70,8 +71,12 @@ def test_agent_card_is_discoverable() -> None:
             assert response.status_code == 200
             payload = response.json()
             assert payload["name"] == "multimodal-parser-agent"
+            assert payload["auth"]["runtime"]["framework"] == "google_adk"
             assert "parser_selection" in payload["capabilities"]
+            assert "google_adk_runtime" in payload["capabilities"]
             assert payload["endpoints"]["create_task"] == "/api/v1/agent/tasks"
+            assert payload["endpoints"]["create_task_from_upload"] == "/api/v1/agent/tasks/upload"
+            assert payload["endpoints"]["event_stream"].endswith("/events/stream")
             assert "invoice_extraction" in payload["skills"]
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -117,6 +122,12 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             assert task["quality_judgement"]["status"] == "passed"
             assert task["lineage"]["asset_id"]
             assert task["tool_calls"][0]["tool_id"] == "parser:html_text"
+            reasoning = [
+                artifact
+                for artifact in task["artifacts"]
+                if artifact["title"] == "Agent reasoning"
+            ][0]
+            assert reasoning["payload"]["agent_framework"]["framework"] == "google_adk"
 
             artifacts = client.get(f"/api/v1/agent/tasks/{task_id}/artifacts").json()
             artifact_kinds = {artifact["kind"] for artifact in artifacts}
@@ -137,6 +148,48 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             events = client.get(f"/api/v1/agent/tasks/{task_id}/events").json()
             assert events[0]["event_type"] == "message.user"
             assert any(event["event_type"] == "step.publish" for event in events)
+            stream_response = client.get(f"/api/v1/agent/tasks/{task_id}/events/stream")
+            assert stream_response.status_code == 200
+            assert "text/event-stream" in stream_response.headers["content-type"]
+            assert "event: step.publish" in stream_response.text
     finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_agent_task_can_be_created_directly_from_upload(tmp_path: Path) -> None:
+    db = make_session()
+    original_storage_dir = settings.storage_dir
+    settings.storage_dir = tmp_path / "uploads"
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/agent/tasks/upload",
+                files={
+                    "file": (
+                        "uploaded.html",
+                        b"<html><body>Uploaded agent task</body></html>",
+                        "text/html",
+                    )
+                },
+                data={
+                    "quality_target": "balanced",
+                    "cost_profile": "balanced",
+                    "latency_profile": "interactive",
+                },
+            )
+            assert response.status_code == 202
+            task = response.json()["task"]
+            assert task["status"] == "completed"
+            assert task["file_id"]
+            assert task["plan"]["selected_parser_id"] == "html_text"
+            assert task["input_payload"]["file_id"] == task["file_id"]
+    finally:
+        settings.storage_dir = original_storage_dir
         app.dependency_overrides.pop(get_db, None)
         db.close()

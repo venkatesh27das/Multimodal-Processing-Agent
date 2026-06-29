@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from backend.app.agent_adk import multimodal_parser_adk_runtime
 from backend.app.core.config import settings
 from backend.app.domain.enums import (
     AgentArtifactKind,
@@ -35,7 +36,6 @@ from backend.app.models.domain import (
 )
 from backend.app.schemas.agent import AgentCard, AgentEndpointMap, AgentTaskCreate, AgentTaskDetail
 from backend.app.schemas.domain import ParserSelectionRequest
-from backend.app.services.orchestration_engine import orchestration_engine
 
 
 class MultimodalParserAgent:
@@ -57,6 +57,7 @@ class MultimodalParserAgent:
             version=settings.app_version,
             provider={"name": "local", "environment": settings.environment},
             capabilities=[
+                "google_adk_runtime",
                 "file_profiling",
                 "parser_selection",
                 "parsing",
@@ -83,6 +84,7 @@ class MultimodalParserAgent:
             ],
             skills=skills,
             tools=[
+                "google_adk_function_tools",
                 "local_parser_registry",
                 "ocr",
                 "vlm_parsing",
@@ -91,15 +93,21 @@ class MultimodalParserAgent:
                 "policy_checks",
             ],
             streaming={"supported": True, "transport": "pollable_events"},
-            auth={"mode": "local", "future_modes": ["api_key", "oauth2", "tenant_policy"]},
+            auth={
+                "mode": "local",
+                "future_modes": ["api_key", "oauth2", "tenant_policy"],
+                "runtime": multimodal_parser_adk_runtime.framework_metadata,
+            },
             endpoints=AgentEndpointMap(
                 create_task="/api/v1/agent/tasks",
+                create_task_from_upload="/api/v1/agent/tasks/upload",
                 get_task="/api/v1/agent/tasks/{task_id}",
                 list_tasks="/api/v1/agent/tasks",
                 cancel_task="/api/v1/agent/tasks/{task_id}/cancel",
                 messages="/api/v1/agent/tasks/{task_id}/messages",
                 artifacts="/api/v1/agent/tasks/{task_id}/artifacts",
                 events="/api/v1/agent/tasks/{task_id}/events",
+                event_stream="/api/v1/agent/tasks/{task_id}/events/stream",
             ),
         )
 
@@ -160,12 +168,17 @@ class MultimodalParserAgent:
                 latency_profile=payload.latency_profile,
                 governance_constraints=payload.governance_constraints,
             )
-            job, plan, quality, asset, review_item = orchestration_engine.run(
+            run_result = multimodal_parser_adk_runtime.run(
                 db,
                 file_record=file_record,
                 file_profile=file_profile,
                 request=request,
             )
+            job = run_result.job
+            plan = run_result.plan
+            quality = run_result.quality
+            asset = run_result.asset
+            review_item = run_result.review_item
             self._persist_trace(
                 db,
                 task=task,
@@ -176,6 +189,7 @@ class MultimodalParserAgent:
                 quality=quality,
                 asset=asset,
                 review_item=review_item,
+                adk_events=run_result.events,
             )
             task.job_id = job.id
             task.status = (
@@ -271,6 +285,7 @@ class MultimodalParserAgent:
         quality: QualityReport,
         asset: ParsedAsset,
         review_item: ReviewItem | None,
+        adk_events: list[dict[str, object]] | None = None,
     ) -> None:
         executions = (
             db.query(ParserExecutionResult)
@@ -480,6 +495,8 @@ class MultimodalParserAgent:
             ),
             {
                 "observed_file_signals": self._file_profile_payload(file_record, file_profile),
+                "agent_framework": multimodal_parser_adk_runtime.framework_metadata,
+                "adk_events": adk_events or [],
                 "selected_parser": plan.selected_parser_id,
                 "fallback_parser": plan.fallback_parser_id,
                 "selected_skill": plan.selected_skill_id,
@@ -491,6 +508,7 @@ class MultimodalParserAgent:
             },
         )
         self._audit_artifact(db, task.id, job_id)
+        self._adk_runtime_artifact(db, task.id, adk_events or [])
 
         self._message(
             db,
@@ -502,6 +520,25 @@ class MultimodalParserAgent:
             if review_item is None
             else "Published parsed asset and routed uncertain output to review.",
             {"asset_id": asset.id, "review_item_id": review_item.id if review_item else None},
+        )
+
+    def _adk_runtime_artifact(
+        self,
+        db: Session,
+        task_id: str,
+        adk_events: list[dict[str, object]],
+    ) -> None:
+        self._artifact(
+            db,
+            task_id,
+            AgentArtifactKind.AGENT_REASONING.value,
+            18,
+            "Google ADK runtime trace",
+            "ADK agent metadata and tool-level runtime events for this parser task.",
+            {
+                "framework": multimodal_parser_adk_runtime.framework_metadata,
+                "events": adk_events,
+            },
         )
 
     def _agent_plan(self, db: Session, task_id: str, job_id: str, plan: ParsingPlan) -> None:

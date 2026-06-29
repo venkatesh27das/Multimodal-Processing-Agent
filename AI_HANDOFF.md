@@ -10,7 +10,7 @@ The repo contains a working local MVP for an enterprise multimodal parsing agent
 - Next.js frontend with compact enterprise UI aligned to supplied wireframes.
 - Local parsers for HTML, DOCX, native-text PDF, image OCR, and optional LM Studio VLM.
 - Parser registry, skills registry, parsing plan, synchronous job execution, quality evaluation, fallback, asset publishing, audit, and observability.
-- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, delegates to the existing synchronous parser orchestration path, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed runtime around the existing synchronous parser orchestration path, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Home, Jobs, Job Detail, Parsers, and Skills screens have been moved away from mock-only presentation toward backend-backed data.
 
 ## Recent UI/Backend Alignment Work
@@ -55,18 +55,21 @@ curl http://localhost:8000/api/v1/skills-registry
 curl http://localhost:8000/.well-known/agent-card.json
 curl http://localhost:8000/api/v1/agent/card
 curl http://localhost:8000/api/v1/agent/tasks
+curl -F "file=@sample_files/invoice.html;type=text/html" http://localhost:8000/api/v1/agent/tasks/upload
 ```
 
 Agent task routes:
 
 ```bash
 POST /api/v1/agent/tasks
+POST /api/v1/agent/tasks/upload
 GET  /api/v1/agent/tasks
 GET  /api/v1/agent/tasks/{task_id}
 POST /api/v1/agent/tasks/{task_id}/cancel
 GET  /api/v1/agent/tasks/{task_id}/messages
 GET  /api/v1/agent/tasks/{task_id}/artifacts
 GET  /api/v1/agent/tasks/{task_id}/events
+GET  /api/v1/agent/tasks/{task_id}/events/stream
 ```
 
 ## How To Run
@@ -121,10 +124,10 @@ make verify-web
 
 ## Known Gaps
 
-- The core Multimodal Parser Agent now has a first backend API and persistence slice, but it still executes synchronously and only supports the existing file-id based local parse path.
-- Agent event streaming is currently implemented as pollable task events, not server-sent events or websocket streaming.
+- The core Multimodal Parser Agent now has a first backend API, Google ADK runtime adapter, direct upload-to-agent endpoint, and persistence slice, but it still executes synchronously.
+- Agent event streaming has an SSE-compatible endpoint over persisted task events; true live worker-driven streaming is still pending.
 - The canonical agent trace is persisted for the synchronous flow, but existing UI screens still mostly read legacy job endpoints instead of the agent task trace.
-- MCP/tool gateway records currently model parser adapters as internal tool calls; a generalized MCP gateway abstraction is still pending.
+- MCP/tool gateway records currently model parser adapters and ADK function tools as internal tool calls; a generalized MCP gateway abstraction is still pending.
 - Global search in the app shell is still mostly visual.
 - Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
@@ -178,6 +181,7 @@ Priority 1 is to turn the current orchestration platform into a single public **
 - [docs/architecture.md](docs/architecture.md)
 - [docs/api_contract.md](docs/api_contract.md)
 - [backend/app/services/orchestration_engine.py](backend/app/services/orchestration_engine.py)
+- [backend/app/agent_adk/runtime.py](backend/app/agent_adk/runtime.py)
 - [backend/app/services/multimodal_parser_agent.py](backend/app/services/multimodal_parser_agent.py)
 - [backend/app/api/routes/agent.py](backend/app/api/routes/agent.py)
 - [backend/app/schemas/agent.py](backend/app/schemas/agent.py)

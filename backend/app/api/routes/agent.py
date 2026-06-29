@@ -1,12 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+from collections.abc import Iterable
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
+from backend.app.domain.enums import CostProfile, JobStatus, LatencyProfile, QualityTarget
 from backend.app.models.domain import (
     AgentArtifact,
     AgentMessage,
     AgentStep,
     AgentTask,
+    FileRecord,
 )
 from backend.app.schemas.agent import (
     AgentArtifactRead,
@@ -18,6 +24,9 @@ from backend.app.schemas.agent import (
     AgentTaskDetail,
     AgentTaskRead,
 )
+from backend.app.services.file_profiling import file_profiler
+from backend.app.services.file_storage import store_upload
+from backend.app.services.file_type import infer_file_type
 from backend.app.services.multimodal_parser_agent import multimodal_parser_agent
 
 router = APIRouter(prefix="/agent")
@@ -52,6 +61,48 @@ def create_agent_task(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+    return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
+
+
+@router.post(
+    "/tasks/upload",
+    response_model=AgentTaskCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_agent_task_from_upload(
+    file: UploadFile = File(...),
+    quality_target: QualityTarget = Form(QualityTarget.BALANCED),
+    cost_profile: CostProfile = Form(CostProfile.BALANCED),
+    latency_profile: LatencyProfile = Form(LatencyProfile.INTERACTIVE),
+    db: Session = Depends(get_db),
+) -> AgentTaskCreateResponse:
+    stored = await store_upload(file)
+    file_type = infer_file_type(stored.original_filename, stored.content_type)
+    file_record = FileRecord(
+        original_filename=stored.original_filename,
+        file_type=file_type.value,
+        mime_type=stored.content_type,
+        size_bytes=stored.size_bytes,
+        checksum_sha256=stored.checksum_sha256,
+        source="agent-api",
+        storage_path=str(stored.storage_path),
+        status=JobStatus.REGISTERED.value,
+        created_by="local-user",
+    )
+    db.add(file_record)
+    db.flush()
+    db.add(file_profiler.profile(file_record))
+    db.commit()
+    db.refresh(file_record)
+
+    payload = AgentTaskCreate(
+        file_id=file_record.id,
+        quality_target=quality_target,
+        cost_profile=cost_profile,
+        latency_profile=latency_profile,
+        title=f"Parse {file_record.original_filename}",
+    )
+    task = multimodal_parser_agent.create_task(db, payload)
     return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
 
 
@@ -95,6 +146,24 @@ def get_agent_task_artifacts(task_id: str, db: Session = Depends(get_db)) -> lis
 @router.get("/tasks/{task_id}/events", response_model=list[AgentEventRead])
 def get_agent_task_events(task_id: str, db: Session = Depends(get_db)) -> list[AgentEventRead]:
     _load_task(db, task_id)
+    return _task_events(db, task_id)
+
+
+@router.get("/tasks/{task_id}/events/stream")
+def stream_agent_task_events(task_id: str, db: Session = Depends(get_db)) -> StreamingResponse:
+    _load_task(db, task_id)
+    events = _task_events(db, task_id)
+
+    def event_stream() -> Iterable[str]:
+        for event in events:
+            payload = event.model_dump(mode="json")
+            yield f"event: {event.event_type}\n"
+            yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _task_events(db: Session, task_id: str) -> list[AgentEventRead]:
     messages = (
         db.query(AgentMessage)
         .filter(AgentMessage.task_id == task_id)

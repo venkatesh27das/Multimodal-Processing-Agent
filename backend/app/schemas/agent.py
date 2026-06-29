@@ -16,12 +16,14 @@ from backend.app.schemas.common import APIModel
 
 class AgentEndpointMap(APIModel):
     create_task: str
+    create_task_from_upload: str
     get_task: str
     list_tasks: str
     cancel_task: str
     messages: str
     artifacts: str
     events: str
+    event_stream: str
 
 
 class AgentCard(APIModel):
