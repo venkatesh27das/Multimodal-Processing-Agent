@@ -4,6 +4,17 @@ from backend.app.db.base import Base
 from backend.app.db.seed import seed_registry_data
 from backend.app.db.session import SessionLocal, engine
 from backend.app.models import (
+    AgentArtifact,
+    AgentDecision,
+    AgentLineage,
+    AgentMessage,
+    AgentPlan,
+    AgentQualityJudgement,
+    AgentSkillInvocation,
+    AgentStep,
+    AgentSubtask,
+    AgentTask,
+    AgentToolCall,
     AuditEvent,
     FileProfile,
     FileRecord,
@@ -18,6 +29,17 @@ from backend.app.models import (
 )
 
 __all__ = [
+    "AgentArtifact",
+    "AgentDecision",
+    "AgentLineage",
+    "AgentMessage",
+    "AgentPlan",
+    "AgentQualityJudgement",
+    "AgentSkillInvocation",
+    "AgentStep",
+    "AgentSubtask",
+    "AgentTask",
+    "AgentToolCall",
     "AuditEvent",
     "FileProfile",
     "FileRecord",

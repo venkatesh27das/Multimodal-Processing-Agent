@@ -19,8 +19,8 @@ from backend.app.schemas.domain import (
     QualityReportRead,
 )
 from backend.app.schemas.jobs import ParseJobCreate, ParseJobResponse
-from backend.app.services.orchestration_engine import orchestration_engine
 from backend.app.services.observability import observability_service
+from backend.app.services.orchestration_engine import orchestration_engine
 from backend.app.services.parser_selector import parser_selector
 
 router = APIRouter(prefix="/parse-jobs")

@@ -6,6 +6,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.db.base import Base
 from backend.app.domain.enums import (
+    AgentArtifactKind,
+    AgentMessageRole,
+    AgentStepKind,
+    AgentTaskStatus,
     CostLevel,
     DeploymentMode,
     FileType,
@@ -327,4 +331,232 @@ class AuditEvent(Base):
     entity_type: Mapped[str] = mapped_column(String(128), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
     event_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentTask(Base):
+    __tablename__ = "agent_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    status: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=AgentTaskStatus.SUBMITTED.value,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("file_records.id"),
+        nullable=True,
+    )
+    job_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("parse_jobs.id"),
+        nullable=True,
+    )
+    requested_output_contract: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    governance_constraints: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    quality_target: Mapped[str] = mapped_column(String(64), nullable=False, default="balanced")
+    cost_profile: Mapped[str] = mapped_column(String(64), nullable=False, default="balanced")
+    latency_profile: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="interactive",
+    )
+    input_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
+class AgentMessage(Base):
+    __tablename__ = "agent_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=AgentMessageRole.AGENT.value,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentArtifact(Base):
+    __tablename__ = "agent_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=AgentArtifactKind.AGENT_REASONING.value,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    storage_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentPlan(Base):
+    __tablename__ = "agent_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("parse_jobs.id"))
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="created")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_parser_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fallback_parser_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    selected_skill_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    quality_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
+class AgentStep(Base):
+    __tablename__ = "agent_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=AgentStepKind.OBSERVE.value,
+    )
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="completed")
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentDecision(Base):
+    __tablename__ = "agent_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    decision_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_option: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    alternatives: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    score_breakdown: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentToolCall(Base):
+    __tablename__ = "agent_tool_calls"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    tool_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="completed")
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    response_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentSkillInvocation(Base):
+    __tablename__ = "agent_skill_invocations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="completed")
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_result: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentSubtask(Base):
+    __tablename__ = "agent_subtasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    subagent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="completed")
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentQualityJudgement(Base):
+    __tablename__ = "agent_quality_judgements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    quality_report_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("quality_reports.id"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    dimensions: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    thresholds: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    review_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class AgentLineage(Base):
+    __tablename__ = "agent_lineage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"), nullable=False)
+    source_file_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)

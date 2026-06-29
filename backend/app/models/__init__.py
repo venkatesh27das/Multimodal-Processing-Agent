@@ -1,4 +1,15 @@
 from backend.app.models.domain import (
+    AgentArtifact,
+    AgentDecision,
+    AgentLineage,
+    AgentMessage,
+    AgentPlan,
+    AgentQualityJudgement,
+    AgentSkillInvocation,
+    AgentStep,
+    AgentSubtask,
+    AgentTask,
+    AgentToolCall,
     AuditEvent,
     FileProfile,
     FileRecord,
@@ -13,6 +24,17 @@ from backend.app.models.domain import (
 )
 
 __all__ = [
+    "AgentArtifact",
+    "AgentDecision",
+    "AgentLineage",
+    "AgentMessage",
+    "AgentPlan",
+    "AgentQualityJudgement",
+    "AgentSkillInvocation",
+    "AgentStep",
+    "AgentSubtask",
+    "AgentTask",
+    "AgentToolCall",
     "AuditEvent",
     "FileProfile",
     "FileRecord",

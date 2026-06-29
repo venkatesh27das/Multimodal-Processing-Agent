@@ -36,7 +36,10 @@ def get_skill(skill_id: str, db: Session = Depends(get_db)) -> SkillDefinitionRe
 
 
 @router.post("", response_model=SkillDefinitionRead, status_code=status.HTTP_201_CREATED)
-def create_skill(payload: SkillDefinitionCreate, db: Session = Depends(get_db)) -> SkillDefinitionRead:
+def create_skill(
+    payload: SkillDefinitionCreate,
+    db: Session = Depends(get_db),
+) -> SkillDefinitionRead:
     skill_id = _unique_skill_id(db, payload.skill_id or payload.name)
     skill = SkillDefinition(skill_id=skill_id, **_skill_create_values(payload))
     db.add(skill)
@@ -60,7 +63,11 @@ def update_skill(
     return skill
 
 
-@router.post("/{skill_id}/duplicate", response_model=SkillDefinitionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{skill_id}/duplicate",
+    response_model=SkillDefinitionRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def duplicate_skill(
     skill_id: str,
     payload: SkillDuplicateRequest | None = None,
@@ -168,7 +175,9 @@ def _skill_create_values(payload: SkillDefinitionCreate) -> dict[str, object]:
 def _skill_update_values(payload: SkillDefinitionUpdate) -> dict[str, object]:
     values = payload.model_dump(exclude_unset=True)
     if "supported_document_types" in values and values["supported_document_types"] is not None:
-        values["supported_document_types"] = [item.value for item in payload.supported_document_types or []]
+        values["supported_document_types"] = [
+            item.value for item in payload.supported_document_types or []
+        ]
     return values
 
 
@@ -188,9 +197,15 @@ def _skill_payloads_from_pack(raw_payload: Any) -> list[dict[str, Any]]:
         )
 
     if not payloads:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Skill pack contains no skills.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Skill pack contains no skills.",
+        )
     if not all(isinstance(item, dict) for item in payloads):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each imported skill must be an object.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Each imported skill must be an object.",
+        )
     return payloads
 
 

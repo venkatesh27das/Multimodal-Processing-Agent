@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from backend.app.api.routes import (
+    agent,
     agent_skills,
     assets,
     dashboard,
@@ -92,6 +93,8 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
+    app.include_router(agent.well_known_router, tags=["agent"])
+    app.include_router(agent.router, prefix=settings.api_prefix, tags=["agent"])
     app.include_router(assets.router, prefix=settings.api_prefix, tags=["assets"])
     app.include_router(files.router, prefix=settings.api_prefix, tags=["files"])
     app.include_router(agent_skills.router, prefix=settings.api_prefix, tags=["skills"])

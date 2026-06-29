@@ -89,3 +89,49 @@ class LatencyProfile(StrEnum):
     BATCH = "batch"
     INTERACTIVE = "interactive"
     REAL_TIME = "real_time"
+
+
+class AgentTaskStatus(StrEnum):
+    SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
+    OBSERVING = "observing"
+    PLANNING = "planning"
+    EXECUTING = "executing"
+    EVALUATING = "evaluating"
+    REPAIRING = "repairing"
+    AWAITING_REVIEW = "awaiting_review"
+    PUBLISHING = "publishing"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class AgentMessageRole(StrEnum):
+    USER = "user"
+    AGENT = "agent"
+    TOOL = "tool"
+    SUBAGENT = "subagent"
+    SYSTEM = "system"
+
+
+class AgentArtifactKind(StrEnum):
+    FILE_PROFILE = "file_profile"
+    PARSING_PLAN = "parsing_plan"
+    AGENT_REASONING = "agent_reasoning"
+    PARSER_OUTPUT = "parser_output"
+    SKILL_OUTPUT = "skill_output"
+    QUALITY_REPORT = "quality_report"
+    FALLBACK_REPORT = "fallback_report"
+    REVIEW_REQUEST = "review_request"
+    PARSED_ASSET = "parsed_asset"
+    LINEAGE_REPORT = "lineage_report"
+    AUDIT_SUMMARY = "audit_summary"
+
+
+class AgentStepKind(StrEnum):
+    OBSERVE = "observe"
+    PLAN = "plan"
+    ACT = "act"
+    EVALUATE = "evaluate"
+    REPAIR = "repair"
+    PUBLISH = "publish"

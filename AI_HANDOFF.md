@@ -1,6 +1,6 @@
 # AI Handoff
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 ## Current State
 
@@ -10,6 +10,7 @@ The repo contains a working local MVP for an enterprise multimodal parsing agent
 - Next.js frontend with compact enterprise UI aligned to supplied wireframes.
 - Local parsers for HTML, DOCX, native-text PDF, image OCR, and optional LM Studio VLM.
 - Parser registry, skills registry, parsing plan, synchronous job execution, quality evaluation, fallback, asset publishing, audit, and observability.
+- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, delegates to the existing synchronous parser orchestration path, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Home, Jobs, Job Detail, Parsers, and Skills screens have been moved away from mock-only presentation toward backend-backed data.
 
 ## Recent UI/Backend Alignment Work
@@ -51,6 +52,21 @@ curl http://localhost:8000/api/v1/parsers/metrics
 curl http://localhost:8000/api/v1/observability/summary
 curl http://localhost:8000/api/v1/parser-registry
 curl http://localhost:8000/api/v1/skills-registry
+curl http://localhost:8000/.well-known/agent-card.json
+curl http://localhost:8000/api/v1/agent/card
+curl http://localhost:8000/api/v1/agent/tasks
+```
+
+Agent task routes:
+
+```bash
+POST /api/v1/agent/tasks
+GET  /api/v1/agent/tasks
+GET  /api/v1/agent/tasks/{task_id}
+POST /api/v1/agent/tasks/{task_id}/cancel
+GET  /api/v1/agent/tasks/{task_id}/messages
+GET  /api/v1/agent/tasks/{task_id}/artifacts
+GET  /api/v1/agent/tasks/{task_id}/events
 ```
 
 ## How To Run
@@ -93,9 +109,10 @@ npm run build
 
 ## Known Gaps
 
-- The core Multimodal Parser Agent is not yet exposed as one A2A-style agent API.
-- There is no first-class Agent Card, A2A task lifecycle, agent message stream, or artifact model.
-- Parser orchestration exists, but agent reasoning, subagent delegation, MCP/tool calls, and skill invocation are not yet captured as one canonical agent trace.
+- The core Multimodal Parser Agent now has a first backend API and persistence slice, but it still executes synchronously and only supports the existing file-id based local parse path.
+- Agent event streaming is currently implemented as pollable task events, not server-sent events or websocket streaming.
+- The canonical agent trace is persisted for the synchronous flow, but existing UI screens still mostly read legacy job endpoints instead of the agent task trace.
+- MCP/tool gateway records currently model parser adapters as internal tool calls; a generalized MCP gateway abstraction is still pending.
 - Global search in the app shell is still mostly visual.
 - Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
@@ -111,13 +128,13 @@ Priority 1 is to turn the current orchestration platform into a single public **
 
 ### Priority 1: A2A Multimodal Parser Agent
 
-1. Add a first-class `MultimodalParserAgent` service that owns the loop: observe -> plan -> act -> evaluate -> repair -> publish.
-2. Add an Agent Card endpoint describing the agent name, description, capabilities, supported modalities, input/output modes, skills, and task endpoints.
-3. Add A2A-style task endpoints for creating, reading, listing, cancelling, and streaming parser-agent tasks.
-4. Add persisted agent task models for `AgentTask`, `AgentMessage`, `AgentArtifact`, `AgentPlan`, `AgentStep`, `AgentDecision`, `AgentToolCall`, `AgentSkillInvocation`, and `AgentQualityJudgement`.
-5. Convert existing file profiling, parser selection, parsing plan, execution, fallback, quality evaluation, review routing, and asset publishing into explicit agent steps.
-6. Store the agent reasoning trace: observations, selected parser, selected skill, tool/subagent calls, fallback decisions, confidence signals, review rationale, and published asset lineage.
-7. Keep REST endpoints for UI compatibility, but make them read from or delegate to the core agent task model where possible.
+1. Extend the first-class `MultimodalParserAgent` service beyond the synchronous file-id flow into async/background execution.
+2. Replace pollable task events with real event streaming once lifecycle persistence is stable.
+3. Make existing REST screens read from or delegate to the core agent task model where possible.
+4. Connect Home and Parse upload flows to `POST /api/v1/agent/tasks`.
+5. Add generalized MCP/tool gateway records beyond parser-adapter tool-call traces.
+6. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
+7. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
 
 ### Priority 2: Internal Capabilities Behind The Agent
 
@@ -149,6 +166,9 @@ Priority 1 is to turn the current orchestration platform into a single public **
 - [docs/architecture.md](docs/architecture.md)
 - [docs/api_contract.md](docs/api_contract.md)
 - [backend/app/services/orchestration_engine.py](backend/app/services/orchestration_engine.py)
+- [backend/app/services/multimodal_parser_agent.py](backend/app/services/multimodal_parser_agent.py)
+- [backend/app/api/routes/agent.py](backend/app/api/routes/agent.py)
+- [backend/app/schemas/agent.py](backend/app/schemas/agent.py)
 - [backend/app/services/parser_selector.py](backend/app/services/parser_selector.py)
 - [frontend/api/dashboard.ts](frontend/api/dashboard.ts)
 - [frontend/app/page.tsx](frontend/app/page.tsx)
