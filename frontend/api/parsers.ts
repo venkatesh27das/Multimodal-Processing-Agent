@@ -246,7 +246,7 @@ function mergeParsersAndMetrics(parsers: BackendParserDefinition[], metrics: Par
   const maxJobs = Math.max(1, ...metrics.map((metric) => metric.jobCount));
   return parsers.map((parser) => {
     const metric = metricByParser.get(parser.parser_id);
-    const successRate = metric?.jobCount ? metric.successCount / metric.jobCount : Math.min(0.98, parser.expected_quality + 0.08);
+    const successRate = metric?.jobCount ? metric.successCount / metric.jobCount : null;
     const status = statusFor(parser, metric);
     return {
       parserId: parser.parser_id,
@@ -256,10 +256,10 @@ function mergeParsersAndMetrics(parsers: BackendParserDefinition[], metrics: Par
       provider: parser.deployment_mode === "external" ? "Managed Provider" : "Local Runtime",
       parserType: parser.parser_type,
       version: parser.version,
-      usagePercent: metric?.jobCount ? Math.round((metric.jobCount / maxJobs) * 100) : Math.max(3, Math.round(parser.expected_quality * 20)),
+      usagePercent: metric?.jobCount ? Math.round((metric.jobCount / maxJobs) * 100) : 0,
       successRate,
-      avgQuality: metric?.averageConfidence ?? parser.expected_quality,
-      avgLatencyMs: metric?.averageLatencyMs ?? latencyFor(parser.latency_level),
+      avgQuality: metric?.averageConfidence ?? null,
+      avgLatencyMs: metric?.averageLatencyMs ?? null,
       costTier: parser.cost_level === "high" ? "Premium" : parser.cost_level === "low" ? "Low" : "Standard",
       status,
       deploymentMode: parser.deployment_mode,
@@ -286,14 +286,8 @@ function metricFromBackend(metric: BackendParserMetric): ParserMetrics {
 function statusFor(parser: BackendParserDefinition, metric?: ParserMetrics): ParserStatus {
   if (!parser.enabled) return "disabled";
   if ((metric?.errorCount ?? 0) > 0) return "degraded";
-  if ((metric?.averageConfidence ?? parser.expected_quality) < 0.75) return "warning";
+  if (metric?.averageConfidence !== null && metric?.averageConfidence !== undefined && metric.averageConfidence < 0.75) return "warning";
   return "healthy";
-}
-
-function latencyFor(level: string): number {
-  if (level === "low") return 1600;
-  if (level === "medium") return 3200;
-  return 6200;
 }
 
 function deriveRoutingPolicy(parsers: ParserDefinition[]): RoutingPolicySummary {

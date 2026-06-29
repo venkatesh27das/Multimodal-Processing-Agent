@@ -751,7 +751,7 @@ function RunningState({
             <div className="mt-2 h-2 rounded-full bg-slate-100">
               <div className="h-full rounded-full bg-accent" style={{ width: `${progress.percent}%` }} />
             </div>
-            <StageProgress currentStage={progress.currentStage} />
+            <StageProgress currentStage={progress.currentStage} complete={progress.percent >= 100} />
 
             <div className="mt-6 overflow-x-auto">
               <table className="w-full min-w-[820px] text-left text-sm">
@@ -1190,14 +1190,14 @@ function RunConfig({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StageProgress({ currentStage }: { currentStage: string }) {
+function StageProgress({ currentStage, complete }: { currentStage: string; complete: boolean }) {
   const stages = ["intake", "profiling", "parsing", "validation", "publish"];
   const current = stages.indexOf(currentStage);
   return (
     <div className="mt-6 grid grid-cols-5 gap-3">
       {stages.map((stage, index) => {
-        const done = index < current;
-        const active = index === current;
+        const done = complete || index < current;
+        const active = !complete && index === current;
         return (
           <div key={stage} className="text-center text-sm">
             <span className={`mx-auto grid h-6 w-6 place-items-center rounded-full border ${done ? "border-success bg-success text-white" : active ? "border-accent text-accent" : "border-slate-300 text-muted"}`}>

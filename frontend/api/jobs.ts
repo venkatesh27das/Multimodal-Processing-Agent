@@ -89,6 +89,11 @@ export type BackendParsedAsset = {
   created_at: string;
 };
 
+type BackendParserSummary = {
+  parser_id: string;
+  name: string;
+};
+
 export type ParseObjective =
   | "general"
   | "structured"
@@ -488,21 +493,21 @@ export function deriveJobProgress(job: ParseJob | null, totalFiles: number, proc
   const status = job?.status ?? "queued";
   const terminal = ["complete", "failed", "review_required", "cancelled"].includes(status);
   const currentStage = job?.current_stage ?? (terminal ? "publish" : status === "running" ? "parsing" : status === "planning" ? "profiling" : "intake");
-  const percent = typeof job?.progress_percent === "number"
-    ? clampPercent(job.progress_percent)
-    : status === "complete"
+  const terminalPercent =
+    status === "complete" || status === "review_required"
       ? 100
       : status === "failed"
         ? 80
-        : status === "review_required"
-          ? 96
-          : status === "cancelled"
-            ? 0
-            : status === "running"
-              ? 62
-              : status === "planning"
-                ? 40
-                : 22;
+        : status === "cancelled"
+          ? 0
+          : null;
+  const percent = terminalPercent ?? (typeof job?.progress_percent === "number"
+    ? clampPercent(job.progress_percent)
+    : status === "running"
+      ? 62
+      : status === "planning"
+        ? 40
+        : 22);
   return {
     jobId: job?.id ?? "",
     status,
@@ -746,16 +751,18 @@ export function filterAndPaginateJobs(jobs: Job[], filters: JobFilters): Paginat
 }
 
 async function enrichJob(job: BackendParseJob): Promise<Job> {
-  const [file, plan, quality, assets] = await Promise.all([
+  const [file, plan, quality, assets, parserNames] = await Promise.all([
     safeRequest<BackendFileRecord>(`/files/${job.file_id}`),
     safeRequest<BackendParsingPlan>(`/jobs/${job.id}/plan`),
     safeRequest<BackendQualityReport>(`/jobs/${job.id}/quality`),
     safeRequest<BackendParsedAsset[]>(`/jobs/${job.id}/assets`),
+    getParserNameMap(),
   ]);
 
   const firstAsset = assets?.[0] ?? null;
   const status = mapStatus(job.status, quality?.human_review_required ?? false);
-  const parser = job.parser_id ?? firstAsset?.parser_used ?? plan?.selected_parser_id ?? "Planning";
+  const parserId = job.parser_id ?? firstAsset?.parser_used ?? plan?.selected_parser_id ?? null;
+  const parser = parserId ? parserNames.get(parserId) ?? parserId : "Planning";
   const fileName = file?.original_filename ?? `File ${shortId(job.file_id)}`;
   const fileType =
     file?.file_type ??
@@ -771,7 +778,7 @@ async function enrichJob(job: BackendParseJob): Promise<Job> {
     objective: inferObjective(plan, fileType),
     parser,
     fallback: firstAsset?.fallback_used ?? false,
-    fallbackParser: plan?.fallback_parser_id ?? null,
+    fallbackParser: plan?.fallback_parser_id ? parserNames.get(plan.fallback_parser_id) ?? plan.fallback_parser_id : null,
     status,
     statusKey: statusToFilter(status),
     quality: qualityScore,
@@ -793,6 +800,14 @@ async function safeRequest<T>(path: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+let parserNameMapPromise: Promise<Map<string, string>> | null = null;
+
+async function getParserNameMap(): Promise<Map<string, string>> {
+  parserNameMapPromise ??= safeRequest<BackendParserSummary[]>("/parser-registry")
+    .then((parsers) => new Map((parsers ?? []).map((parser) => [parser.parser_id, parser.name])));
+  return parserNameMapPromise;
 }
 
 function mapStatus(status: BackendJobStatus, reviewRequired: boolean): JobStatus {

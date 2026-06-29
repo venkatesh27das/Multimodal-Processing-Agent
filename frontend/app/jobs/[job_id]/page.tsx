@@ -42,15 +42,16 @@ type DetailState = {
   assets: ParsedAsset[];
   file: FileRecord | null;
   profile: FileProfile | null;
-  demo?: boolean;
 };
 
 export default function JobDetailPage({ params }: { params: { job_id: string } }) {
   const [data, setData] = useState<DetailState | null>(null);
   const [agentTask, setAgentTask] = useState<AgentTaskDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
+      setError(null);
       try {
         const job = await api.getJob(params.job_id);
         const [plan, quality, assets, file, profile] = await Promise.all([
@@ -63,7 +64,8 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         setData({ job, plan, quality, assets, file, profile });
         setAgentTask(await agentApi.findTaskByJobId(job.id).catch(() => null));
       } catch (err) {
-        setData(demoDetail(params.job_id));
+        setError(err instanceof Error ? err.message : "Unable to load job detail.");
+        setData(null);
         setAgentTask(null);
       }
     }
@@ -94,7 +96,11 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   const tables = firstAsset?.tables ?? [];
 
   if (!detail) {
-    return <Card className="p-4 text-sm text-muted">Loading job detail...</Card>;
+    return (
+      <Card className="p-4 text-sm text-muted">
+        {error ? `Unable to load job detail: ${error}` : "Loading job detail..."}
+      </Card>
+    );
   }
 
   return (
@@ -399,80 +405,4 @@ function stringifyCell(value: unknown) {
   if (value === null || value === undefined) return "--";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
-}
-
-function demoDetail(jobId: string): DetailState {
-  const job: ParseJob = {
-    id: jobId,
-    file_id: "demo-file-contract",
-    status: "complete",
-    parser_id: "Contract Parser v3",
-    skill_id: "contract_parsing",
-    quality_status: "passed",
-    created_at: "2025-03-24T10:14:00Z",
-    updated_at: "2025-03-24T10:16:00Z",
-  };
-  return {
-    demo: true,
-    job,
-    file: {
-      id: "demo-file-contract",
-      original_filename: "Master Services Agreement.pdf",
-      file_type: "pdf",
-      mime_type: "application/pdf",
-      size_bytes: 2_400_000,
-      checksum_sha256: "4b8d7f2c1e9a8cc6a7b2e1d9f8a",
-      source: "Upload",
-      storage_path: "demo",
-      status: "complete",
-      created_by: "demo",
-      uploaded_at: "2025-03-24T10:14:00Z",
-    },
-    profile: {
-      id: "demo-profile",
-      file_id: "demo-file-contract",
-      file_type: "pdf",
-      modalities: ["text"],
-      has_text_layer: true,
-      is_scanned: false,
-      page_count: 24,
-      table_likelihood: 0.42,
-      image_likelihood: 0.12,
-      language: "English",
-      layout_complexity: "medium",
-      estimated_cost_class: "standard",
-      recommended_parsing_strategy: "Contract parser with layout-aware validation.",
-      created_at: "2025-03-24T10:14:00Z",
-    },
-    plan: {
-      id: "demo-plan",
-      job_id: job.id,
-      file_id: job.file_id,
-      selected_parser_id: "Contract Parser v3",
-      fallback_parser_id: "Financial Parser v2",
-      selected_skill_id: "Contract & Clause Extraction",
-      output_contract: { parsed_text: true, tables: true, entities: true },
-      expected_assets: ["text", "tables", "entities"],
-      quality_threshold: 0.85,
-      cost_profile: { estimate: 0.18 },
-      human_review_policy: { auto_accept_above: 0.9 },
-      decision_reason: "Selected based on document profile and clause density.",
-      created_at: "2025-03-24T10:14:07Z",
-    },
-    quality: {
-      id: "demo-quality",
-      job_id: job.id,
-      execution_result_id: null,
-      quality_status: "passed",
-      parser_confidence: 0.92,
-      extraction_confidence: 0.92,
-      schema_validation_score: 0.91,
-      completeness_score: 0.94,
-      consistency_score: 0.9,
-      human_review_required: false,
-      quality_explanation: "High quality extraction with no review required.",
-      created_at: "2025-03-24T10:16:00Z",
-    },
-    assets: [{ asset_id: "asset-demo", id: "asset-demo", job_id: job.id, file_id: job.file_id, asset_type: "document", parser_used: "Contract Parser v3", fallback_used: false, skill_used: "Contract & Clause Extraction", latency_ms: 122000, document_metadata: {}, parsed_text: null, layout_blocks: [], tables: [], image_descriptions: [], audio_transcript: null, video_transcript: null, chunks: [], embeddings: [], entities: [], relationships: [], evidence_spans: [], quality_report: { extraction_confidence: 0.92 }, lineage: {}, cost_estimate: {}, audit_trail: [], structured_data: {}, created_at: "2025-03-24T10:16:00Z" }],
-  };
 }

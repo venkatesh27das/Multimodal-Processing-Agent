@@ -59,6 +59,7 @@ export default function JobsPage() {
   const failed = jobs.filter((job) => job.statusKey === "failed").length;
   const running = jobs.filter((job) => job.statusKey === "running").length;
   const avgLatency = averageLatency(jobs);
+  const completionRate = jobs.length ? Math.round((completed / jobs.length) * 1000) / 10 : null;
 
   return (
     <div className="space-y-5">
@@ -117,7 +118,7 @@ export default function JobsPage() {
           <label className="flex h-10 min-w-[210px] items-center gap-2 rounded-md border border-border bg-white px-3 text-sm shadow-panel">
             <span className="min-w-0 flex-1">
               <span className="block text-[11px] font-bold text-muted">Date Range</span>
-              <span className="block truncate font-semibold text-ink">May 19 - May 26, 2025</span>
+              <span className="block truncate font-semibold text-ink">{dateRangeLabel(filters.dateRange)}</span>
             </span>
             <Calendar className="h-4 w-4 text-muted" aria-hidden="true" />
           </label>
@@ -136,54 +137,54 @@ export default function JobsPage() {
         <MetricCard
           icon={FileCheck2}
           label="Total Jobs"
-          value="1,248"
-          delta="↑ 18% vs last 7 days"
+          value={String(jobs.length)}
+          delta="Loaded from backend"
           tone="info"
-          data={[8, 10, 9, 12, 14, 13, 15]}
+          data={sparklineFromCount(jobs.length)}
         />
         <MetricCard
           icon={PlayCircle}
           label="Running"
-          value={String(Math.max(running, 23))}
-          delta="↑ 9% vs last 7 days"
+          value={String(running)}
+          delta="Currently active"
           tone="success"
-          data={[7, 8, 7, 10, 9, 11, 10]}
+          data={sparklineFromCount(running)}
         />
         <MetricCard
           icon={Star}
           label="Completed"
-          value="1,142"
-          delta="↑ 20% vs last 7 days"
+          value={String(completed)}
+          delta="Backend job status"
           tone="success"
-          data={[6, 8, 7, 9, 12, 11, 13]}
+          data={sparklineFromCount(completed)}
         />
         <MetricCard
           icon={ShieldAlert}
           label="Review Required"
-          value={String(Math.max(review, 87))}
-          delta="↓ 6% vs last 7 days"
+          value={String(review)}
+          delta="Pending human review"
           tone="warning"
-          data={[5, 4, 6, 4, 3, 5, 3]}
+          data={sparklineFromCount(review)}
         />
         <MetricCard
           icon={Clock3}
           label="Failed"
-          value={String(Math.max(failed, 73))}
-          delta="↑ 12% vs last 7 days"
+          value={String(failed)}
+          delta="Backend job status"
           tone="danger"
-          data={[9, 8, 10, 7, 9, 10, 11]}
+          data={sparklineFromCount(failed)}
         />
         <Card className="p-4">
           <p className="flex items-center gap-1 text-xs font-bold text-muted">Job Health <AlertCircle className="h-3 w-3 text-subtle" /></p>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-xs text-muted">Completion Rate</p>
-              <p className="mt-1 text-lg font-bold text-ink">91.6%</p>
-              <div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-full w-[92%] rounded-full bg-success" /></div>
+              <p className="mt-1 text-lg font-bold text-ink">{completionRate === null ? "--" : `${completionRate}%`}</p>
+              <div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-success" style={{ width: `${completionRate ?? 0}%` }} /></div>
             </div>
             <div>
               <p className="text-xs text-muted">Avg. Duration</p>
-              <p className="mt-1 text-lg font-bold text-ink">{avgLatency === "--" ? "2m 34s" : avgLatency}</p>
+              <p className="mt-1 text-lg font-bold text-ink">{avgLatency}</p>
             </div>
           </div>
         </Card>
@@ -205,7 +206,7 @@ export default function JobsPage() {
 
         {error ? (
           <div className="m-3 rounded-lg border border-amber-200 bg-warning-soft p-3 text-sm text-amber-800">
-            Showing demo jobs because live jobs could not be loaded: {error}
+            Live jobs could not be loaded: {error}
           </div>
         ) : null}
 
@@ -456,15 +457,21 @@ function Toast({
   );
 }
 
-function averageQuality(jobs: Job[]) {
-  const values = jobs.map((job) => job.quality).filter((value): value is number => value !== null);
-  if (!values.length) return "--";
-  return `${Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100)}%`;
-}
-
 function averageLatency(jobs: Job[]) {
   const values = jobs.map((job) => job.durationMs).filter((value): value is number => value !== null);
   if (!values.length) return "--";
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   return average < 1000 ? `${Math.round(average)} ms` : `${(average / 1000).toFixed(1)}s`;
+}
+
+function dateRangeLabel(value: string) {
+  if (value === "today") return "Today";
+  if (value === "7d") return "Last 7 days";
+  if (value === "30d") return "Last 30 days";
+  return "All dates";
+}
+
+function sparklineFromCount(count: number) {
+  if (count <= 0) return [0, 0, 0, 0, 0, 0, 0];
+  return [0, 0, 0, 0, 0, 0, count];
 }

@@ -300,10 +300,13 @@ function buildOutputContract(
 }
 
 function eventStatus(event: AgentEvent): JobEvent["status"] {
+  const eventText = `${event.title} ${event.summary}`.toLowerCase();
   if (event.event_type.includes("failed")) return "Failed";
   if (event.event_type.includes("cancelled")) return "Cancelled";
-  if (event.event_type.includes("publish")) return "Completed";
   if (event.payload.status === "awaiting_review") return "Review Required";
+  if (eventText.includes("review")) return "Review Required";
+  if (event.event_type.includes("publish")) return "Completed";
+  if (eventText.includes("published") || eventText.includes("completed")) return "Completed";
   if (event.payload.status === "accepted") return "Queued";
   return "Parsing";
 }

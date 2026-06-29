@@ -483,7 +483,7 @@ function progressForAgentStatus(status: AgentTaskDetail["status"]): number {
     evaluating: 72,
     repairing: 82,
     publishing: 92,
-    awaiting_review: 96,
+    awaiting_review: 100,
     completed: 100,
     cancelled: 0,
     failed: 80,
