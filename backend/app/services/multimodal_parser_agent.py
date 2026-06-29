@@ -45,6 +45,7 @@ from backend.app.models.domain import (
 from backend.app.schemas.agent import AgentCard, AgentEndpointMap, AgentTaskCreate, AgentTaskDetail
 from backend.app.schemas.domain import ParserSelectionRequest
 from backend.app.services.file_profiling import file_profiler
+from backend.app.services.tool_gateway import tool_gateway
 
 
 class MultimodalParserAgent:
@@ -132,10 +133,12 @@ class MultimodalParserAgent:
             )
 
         file_id = file_records[0].id
+        tool_policy = tool_gateway.policy_snapshot(payload.governance_constraints)
         input_payload = {
             **payload.model_dump(mode="json"),
             "materialized_file_ids": [file_record.id for file_record in file_records],
             "input_count": len(file_records),
+            "tool_policy": tool_policy,
         }
 
         task = AgentTask(
@@ -149,6 +152,7 @@ class MultimodalParserAgent:
             cost_profile=payload.cost_profile.value,
             latency_profile=payload.latency_profile.value,
             input_payload=input_payload,
+            max_attempts=settings.agent_task_max_attempts,
         )
         db.add(task)
         db.flush()
@@ -375,6 +379,11 @@ class MultimodalParserAgent:
             return task
         task.status = AgentTaskStatus.CANCELLED.value
         task.summary = "Parser-agent task was cancelled before completion."
+        task.worker_id = None
+        task.locked_at = None
+        task.lock_expires_at = None
+        task.heartbeat_at = None
+        task.next_attempt_at = None
         self._message(
             db,
             task.id,
@@ -659,10 +668,19 @@ class MultimodalParserAgent:
 
         self._agent_plan(db, task.id, job_id, plan)
         self._decision(db, task.id, plan, executions)
+        self._tool_policy_decision(db, task, file_profile, plan, sequence=sequence_base + 20)
         self._quality_judgement(db, task.id, plan, quality)
         self._lineage(db, task.id, file_record.id, job_id, asset)
-        self._parser_tool_calls(db, task.id, executions)
-        self._skill_invocation(db, task.id, plan, asset)
+        self._tool_gateway_calls(
+            db,
+            task=task,
+            file_profile=file_profile,
+            plan=plan,
+            executions=executions,
+            sequence_base=sequence_base + 30,
+        )
+        self._parser_tool_calls(db, task.id, executions, sequence_base=sequence_base + 60)
+        self._skill_invocation(db, task.id, plan, asset, file_profile, sequence=sequence_base + 70)
         self._subtask(
             db,
             task.id,
@@ -781,6 +799,8 @@ class MultimodalParserAgent:
                 "fallback_parser": plan.fallback_parser_id,
                 "selected_skill": plan.selected_skill_id,
                 "decision_reason": plan.decision_reason,
+                "tool_policy": tool_gateway.policy_snapshot(task.governance_constraints),
+                "planner_selectable_skills": self._candidate_skill_metadata(db, file_profile),
                 "quality": self._quality_payload(quality),
                 "publish_decision": "awaiting_review"
                 if quality.human_review_required
@@ -873,6 +893,57 @@ class MultimodalParserAgent:
             )
         )
 
+    def _tool_policy_decision(
+        self,
+        db: Session,
+        task: AgentTask,
+        file_profile: FileProfile,
+        plan: ParsingPlan,
+        *,
+        sequence: int,
+    ) -> None:
+        policy = tool_gateway.policy_snapshot(task.governance_constraints)
+        blocked_tools = policy["blocked_tools"]
+        selected_option = (
+            "external_tools_allowed"
+            if policy["external_services_allowed"]
+            else "local_tools_only"
+        )
+        db.add(
+            AgentDecision(
+                task_id=task.id,
+                decision_type="tool_policy",
+                sequence=sequence,
+                title="Tool policy decision",
+                summary=(
+                    "Governance policy allowed "
+                    f"{len(policy['allowed_tools'])} tool(s) and blocked "
+                    f"{len(blocked_tools)} tool(s) for this file."
+                ),
+                selected_option=selected_option,
+                alternatives=[
+                    {
+                        "tool_id": tool["tool_id"],
+                        "category": tool["category"],
+                        "blocked_reasons": tool["blocked_reasons"],
+                    }
+                    for tool in blocked_tools
+                ],
+                score_breakdown={
+                    "external_services_allowed": policy["external_services_allowed"],
+                    "allowed_tool_count": len(policy["allowed_tools"]),
+                    "blocked_tool_count": len(blocked_tools),
+                },
+                payload={
+                    "file_type": file_profile.file_type,
+                    "modalities": file_profile.modalities,
+                    "selected_parser_id": plan.selected_parser_id,
+                    "selected_skill_id": plan.selected_skill_id,
+                    "policy": policy,
+                },
+            )
+        )
+
     def _quality_judgement(
         self,
         db: Session,
@@ -928,6 +999,8 @@ class MultimodalParserAgent:
         db: Session,
         task_id: str,
         executions: list[ParserExecutionResult],
+        *,
+        sequence_base: int = 0,
     ) -> None:
         for index, execution in enumerate(executions, start=1):
             db.add(
@@ -935,7 +1008,7 @@ class MultimodalParserAgent:
                     task_id=task_id,
                     tool_id=f"parser:{execution.parser_id}",
                     status=execution.status,
-                    sequence=index,
+                    sequence=sequence_base + index,
                     input_summary=f"Run parser adapter {execution.parser_id}.",
                     output_summary=execution.error_message
                     or f"Confidence {execution.confidence_score}.",
@@ -946,14 +1019,107 @@ class MultimodalParserAgent:
                 )
             )
 
+    def _tool_gateway_calls(
+        self,
+        db: Session,
+        *,
+        task: AgentTask,
+        file_profile: FileProfile,
+        plan: ParsingPlan,
+        executions: list[ParserExecutionResult],
+        sequence_base: int,
+    ) -> None:
+        policy = tool_gateway.policy_snapshot(task.governance_constraints)
+        planned_tool_ids = self._planned_gateway_tool_ids(file_profile, plan, executions)
+        allowed_tool_ids = set(policy["allowed_tool_ids"])
+        blocked_by_id = {tool["tool_id"]: tool for tool in policy["blocked_tools"]}
+        metadata_by_id = {tool["tool_id"]: tool for tool in tool_gateway.metadata()}
+
+        for index, tool_id in enumerate(planned_tool_ids, start=1):
+            blocked = blocked_by_id.get(tool_id)
+            descriptor = metadata_by_id.get(tool_id, {})
+            status = "blocked" if blocked else "planned"
+            output_summary = (
+                "Tool blocked by task governance policy."
+                if blocked
+                else "Tool allowed by task governance policy."
+            )
+            db.add(
+                AgentToolCall(
+                    task_id=task.id,
+                    tool_id=tool_id,
+                    status=status,
+                    sequence=sequence_base + index,
+                    input_summary="Evaluate tool gateway policy for planned capability.",
+                    output_summary=output_summary,
+                    request_payload={
+                        "file_type": file_profile.file_type,
+                        "modalities": file_profile.modalities,
+                        "selected_parser_id": plan.selected_parser_id,
+                        "selected_skill_id": plan.selected_skill_id,
+                        "governance_constraints": task.governance_constraints,
+                    },
+                    response_payload={
+                        "allowed": tool_id in allowed_tool_ids,
+                        "descriptor": descriptor,
+                        "blocked_reasons": blocked.get("blocked_reasons", []) if blocked else [],
+                    },
+                )
+            )
+
+    def _planned_gateway_tool_ids(
+        self,
+        file_profile: FileProfile,
+        plan: ParsingPlan,
+        executions: list[ParserExecutionResult],
+    ) -> list[str]:
+        planned = [
+            "parser.registry",
+            "parser.adapter",
+            "skill.registry",
+            "quality.evaluator",
+            "schema.validation",
+            "policy.pii",
+            "asset.publisher",
+        ]
+        if plan.selected_skill_id == "table_normalization" or file_profile.table_likelihood >= 0.35:
+            planned.append("table.normalization")
+        if file_profile.is_scanned or file_profile.file_type == FileType.IMAGE.value:
+            planned.append("ocr.tesseract")
+        if file_profile.image_likelihood >= 0.45 or plan.fallback_parser_id in {
+            "vision_model",
+            "vlm",
+        }:
+            planned.append("vlm.lmstudio")
+        if file_profile.file_type in {FileType.PDF.value, FileType.IMAGE.value}:
+            planned.append("document_intelligence.azure")
+        if file_profile.file_type == FileType.AUDIO.value:
+            planned.append("speech.transcription")
+        if file_profile.file_type == FileType.VIDEO.value:
+            planned.extend(["speech.transcription", "video.understanding"])
+        if plan.selected_skill_id == "knowledge_graph_preparation":
+            planned.append("embeddings.vector_search")
+        for execution in executions:
+            if execution.parser_id.startswith("cloud_"):
+                planned.append("document_intelligence.azure")
+        return list(dict.fromkeys(planned))
+
     def _skill_invocation(
         self,
         db: Session,
         task_id: str,
         plan: ParsingPlan,
         asset: ParsedAsset,
+        file_profile: FileProfile,
+        *,
+        sequence: int = 1,
     ) -> None:
         skill_output = self._skill_output(asset)
+        skill_metadata = (
+            self._skill_metadata(db, plan.selected_skill_id)
+            if plan.selected_skill_id
+            else None
+        )
         if plan.selected_skill_id is None and skill_output is None:
             return
         db.add(
@@ -961,7 +1127,7 @@ class MultimodalParserAgent:
                 task_id=task_id,
                 skill_id=plan.selected_skill_id or str(skill_output.get("skill_id")),
                 status="completed" if skill_output and skill_output.get("valid") else "skipped",
-                sequence=1,
+                sequence=sequence,
                 input_summary="Skill selected by parser strategy."
                 if plan.selected_skill_id
                 else "No planner-selected skill.",
@@ -974,7 +1140,11 @@ class MultimodalParserAgent:
                     if skill_output
                     else [],
                 },
-                payload=skill_output or {},
+                payload={
+                    "skill_output": skill_output or {},
+                    "selected_skill_metadata": skill_metadata,
+                    "candidate_skills": self._candidate_skill_metadata(db, file_profile),
+                },
             )
         )
 
@@ -1219,6 +1389,55 @@ class MultimodalParserAgent:
     def _skill_output(self, asset: ParsedAsset) -> dict[str, object] | None:
         skill_output = asset.structured_data.get("skill_output")
         return skill_output if isinstance(skill_output, dict) else None
+
+    def _candidate_skill_metadata(
+        self,
+        db: Session,
+        file_profile: FileProfile,
+    ) -> list[dict[str, object]]:
+        skills = (
+            db.query(SkillDefinition)
+            .filter(SkillDefinition.enabled.is_(True))
+            .order_by(SkillDefinition.skill_id.asc())
+            .all()
+        )
+        return [
+            self._skill_definition_metadata(skill)
+            for skill in skills
+            if file_profile.file_type in skill.supported_document_types
+        ]
+
+    def _skill_metadata(
+        self,
+        db: Session,
+        skill_id: str,
+    ) -> dict[str, object] | None:
+        skill = db.get(SkillDefinition, skill_id)
+        return self._skill_definition_metadata(skill) if skill is not None else None
+
+    def _skill_definition_metadata(self, skill: SkillDefinition) -> dict[str, object]:
+        schema_properties = skill.extraction_schema.get("properties", {})
+        produced_outputs = (
+            sorted(schema_properties.keys()) if isinstance(schema_properties, dict) else []
+        )
+        return {
+            "skill_id": skill.skill_id,
+            "version": skill.version,
+            "description": skill.description,
+            "supported_file_types": skill.supported_document_types,
+            "required_inputs": ["file_profile", "parser_output", "requested_output_contract"],
+            "produced_outputs": produced_outputs,
+            "json_schema": skill.extraction_schema,
+            "validation_rules": skill.validation_rules,
+            "confidence_behavior": (
+                "Uses parser confidence as the base signal; schema validation errors "
+                "lower extraction confidence and may trigger review."
+            ),
+            "cost_profile": "low",
+            "latency_profile": "interactive",
+            "compatible_parsers": ["native_text", "html_text", "docx_text", "pdf_text"],
+            "examples": skill.examples,
+        }
 
     def _task_summary(self, job_status: str, quality_status: str, asset_id: str) -> str:
         if quality_status == QualityStatus.REVIEW_REQUIRED.value:

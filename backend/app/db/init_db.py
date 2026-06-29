@@ -62,6 +62,31 @@ def _apply_sqlite_dev_migrations() -> None:
     if "parse_jobs" not in inspector.get_table_names():
         return
 
+    if "agent_tasks" in inspector.get_table_names():
+        agent_task_columns = {column["name"] for column in inspector.get_columns("agent_tasks")}
+        agent_task_column_sql = {
+            "worker_id": "ALTER TABLE agent_tasks ADD COLUMN worker_id VARCHAR(128)",
+            "attempt_count": (
+                "ALTER TABLE agent_tasks ADD COLUMN attempt_count INTEGER DEFAULT 0 NOT NULL"
+            ),
+            "max_attempts": (
+                "ALTER TABLE agent_tasks ADD COLUMN max_attempts INTEGER DEFAULT 3 NOT NULL"
+            ),
+            "locked_at": "ALTER TABLE agent_tasks ADD COLUMN locked_at DATETIME",
+            "lock_expires_at": "ALTER TABLE agent_tasks ADD COLUMN lock_expires_at DATETIME",
+            "heartbeat_at": "ALTER TABLE agent_tasks ADD COLUMN heartbeat_at DATETIME",
+            "next_attempt_at": "ALTER TABLE agent_tasks ADD COLUMN next_attempt_at DATETIME",
+        }
+        missing_agent_task_statements = [
+            statement
+            for column, statement in agent_task_column_sql.items()
+            if column not in agent_task_columns
+        ]
+        if missing_agent_task_statements:
+            with engine.begin() as connection:
+                for statement in missing_agent_task_statements:
+                    connection.execute(text(statement))
+
     parse_job_columns = {column["name"] for column in inspector.get_columns("parse_jobs")}
     if "skill_id" not in parse_job_columns:
         with engine.begin() as connection:

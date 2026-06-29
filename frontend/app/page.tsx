@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { ChangeEvent, DragEvent } from "react";
+import { useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -28,7 +30,10 @@ import {
   Sparkline,
   StatusPill,
 } from "@/components/design-system";
+import { agentApi, type AgentTaskDetail } from "@/api/agent";
 import type { DashboardSummary, NeedsAttentionSummary, RecentJob, SystemInsights } from "@/api/dashboard";
+import { filesApi } from "@/api/files";
+import { defaultParseConfiguration } from "@/api/jobs";
 import { useDashboardSummary } from "@/hooks/useDashboardSummary";
 import { useNeedsAttention } from "@/hooks/useNeedsAttention";
 import { useRecentJobs } from "@/hooks/useRecentJobs";
@@ -52,6 +57,41 @@ export default function HomePage() {
   const dashboard = useDashboardSummary();
   const recentJobs = useRecentJobs(6);
   const attention = useNeedsAttention();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [homeTask, setHomeTask] = useState<AgentTaskDetail | null>(null);
+  const [homeUploadError, setHomeUploadError] = useState<string | null>(null);
+  const [homeUploading, setHomeUploading] = useState(false);
+
+  async function createHomeAgentTask(files: File[] | FileList) {
+    const selected = Array.from(files);
+    if (!selected.length || homeUploading) return;
+    setHomeUploading(true);
+    setHomeUploadError(null);
+    try {
+      const uploaded = await Promise.all(selected.map((file) => filesApi.uploadFile(file)));
+      const task = await agentApi.createTask({
+        fileIds: uploaded.map((file) => file.fileId).filter((fileId): fileId is string => Boolean(fileId)),
+        objective: "general",
+        configuration: defaultParseConfiguration(),
+        title: `Home parse: ${uploaded.map((file) => file.name).join(", ")}`,
+      });
+      setHomeTask(task);
+    } catch (error) {
+      setHomeUploadError(error instanceof Error ? error.message : "Unable to create agent task.");
+    } finally {
+      setHomeUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleHomeFileChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files?.length) void createHomeAgentTask(event.target.files);
+  }
+
+  function handleHomeDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    if (event.dataTransfer.files.length) void createHomeAgentTask(event.dataTransfer.files);
+  }
 
   return (
     <div className="space-y-5">
@@ -73,9 +113,13 @@ export default function HomePage() {
       <div className="grid gap-3 xl:grid-cols-[minmax(330px,1fr)_minmax(360px,1.12fr)_minmax(230px,0.74fr)] 2xl:grid-cols-[1.1fr_1.1fr_0.9fr]">
         <Card className="border-accent/60 p-4">
           <SectionHeader title="Start Parsing" description="Upload any document, image, audio, or video to extract structured insights." />
-          <Link href="/create-run" className="mt-4 flex min-h-[148px] flex-col items-center justify-center rounded-lg border border-dashed border-accent/60 bg-orange-50/30 p-5 text-center">
+          <label
+            className="mt-4 flex min-h-[148px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-accent/60 bg-orange-50/30 p-5 text-center transition hover:border-accent"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleHomeDrop}
+          >
             <CloudUpload className="h-8 w-8 text-accent" aria-hidden="true" />
-            <p className="mt-3 text-sm font-bold text-ink">Drag & drop files here</p>
+            <p className="mt-3 text-sm font-bold text-ink">{homeUploading ? "Creating agent task..." : "Drag & drop files here"}</p>
             <p className="mt-1 text-xs text-muted">or click to browse</p>
             <p className="mt-3 text-xs text-muted">Supports PDF, DOCX, TXT, PNG, JPG, MP3, MP4 and more</p>
             <div className="mt-4 flex w-full max-w-md items-center justify-center gap-3 text-[11px] text-muted">
@@ -86,12 +130,20 @@ export default function HomePage() {
               </span>
               <span className="h-px flex-1 bg-border" />
             </div>
-          </Link>
+            <input ref={fileInputRef} className="sr-only" type="file" multiple onChange={handleHomeFileChange} />
+          </label>
+          {homeUploadError ? <InlineError message={homeUploadError} /> : null}
+          {homeTask ? (
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-success-soft p-3 text-sm">
+              <p className="font-bold text-emerald-800">Agent task created</p>
+              <p className="mt-1 text-xs text-emerald-700">{homeTask.id} · {homeTask.status.replace("_", " ")}</p>
+            </div>
+          ) : null}
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <Link href="/create-run">
+            <Link href="/parse">
               <ActionButton className="w-full whitespace-nowrap text-xs 2xl:text-sm" icon={Play}>Start Parsing</ActionButton>
             </Link>
-            <Link href="/create-run?template=general">
+            <Link href={homeTask ? "/parse" : "/parse?template=general"}>
               <ActionButton className="w-full whitespace-nowrap text-xs 2xl:text-sm" variant="secondary">Use Template</ActionButton>
             </Link>
           </div>

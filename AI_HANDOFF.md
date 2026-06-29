@@ -10,8 +10,9 @@ The repo contains a working local MVP for an enterprise multimodal parsing agent
 - Next.js frontend with compact enterprise UI aligned to supplied wireframes.
 - Local parsers for HTML, DOCX, native-text PDF, image OCR, and optional LM Studio VLM.
 - Parser registry, skills registry, parsing plan, synchronous job execution, quality evaluation, fallback, asset publishing, audit, and observability.
-- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed workflow runtime, runs parser-agent work in an in-process FastAPI background task, supports multi-file/file/text/asset/URL-placeholder inputs, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
-- The ADK runtime now exposes named internal phase agents, planner-facing skill discovery, and a governed internal tool gateway metadata surface for parser selection, parsing, skill selection, quality evaluation, and asset publishing.
+- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed workflow runtime, runs parser-agent work through a DB-backed worker claim flow, supports multi-file/file/text/asset/URL-placeholder inputs, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- The ADK runtime now exposes named internal phase agents, planner-facing skill discovery, and a governed internal tool gateway metadata surface for parser selection, parsing, OCR, VLM, document intelligence, speech/video placeholders, schema validation, table normalization, policy checks, embeddings, quality evaluation, and asset publishing.
+- Agent tasks now persist a normalized `tool_policy` snapshot in `input_payload`, a `tool_policy` decision record, and gateway `AgentToolCall` planning records for selected non-parser capabilities. Skill invocation payloads now include planner-selectable skill metadata such as required inputs, produced outputs, JSON schema, validation rules, confidence behavior, cost/latency posture, parser compatibility, and examples.
 - Home, Jobs, Job Detail, Parsers, and Skills screens have been moved away from mock-only presentation toward backend-backed data.
 
 ## Recent UI/Backend Alignment Work
@@ -127,16 +128,15 @@ make verify-web
 ## Known Gaps
 
 - The core Multimodal Parser Agent now has a first backend API, Google ADK workflow adapter, direct upload-to-agent endpoint, multi-file task execution, text payload materialization, asset-reference materialization, URL-placeholder materialization, background execution, SSE-compatible event streaming, durable cancellation before/between major phases, and persistence slice.
-- Background execution is currently in-process via FastAPI `BackgroundTasks`; a production queue/worker remains pending for multi-instance deployments and crash recovery.
+- Background execution now routes through the same persisted worker claim flow as `make agent-worker`. Agent tasks carry `worker_id`, `attempt_count`, `max_attempts`, lock, heartbeat, and retry timing fields.
 - URL input is a local governed placeholder only; remote URL fetching is intentionally not implemented in this local mode.
 - Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
-- The Parse screen now creates parser-agent tasks and shows a first Agent Trace panel with timeline, plan, reasoning, artifacts, quality, and task status. Some legacy job views still read job endpoints.
-- MCP/tool gateway support currently exposes local capability metadata and governance policy filtering; real external MCP service execution is still pending.
+- Home upload and the Parse screen now create parser-agent tasks. Parse and Job Detail show first Agent Trace panels with timeline, plan, reasoning, artifacts, quality, and task status. Some legacy list views still read job endpoints.
+- MCP/tool gateway support currently exposes capability metadata, governance policy filtering, and persisted planning traces; real external MCP service execution is still pending.
 - Global search in the app shell is still mostly visual.
-- Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
 - Human review approve/reject decisions are persisted through `/api/v1/review/items/{id}/approve` and `/api/v1/review/items/{id}/reject`, with audit events and a backend-backed Review Queue page.
-- Job execution is synchronous; a production version needs a queue and worker.
+- A DB-backed persisted agent worker is available through `make agent-worker` / `python -m backend.app.workers.agent_worker`. It supports claims, configurable attempts, retry backoff, heartbeat lock extension, and stale-lock recovery. Production still needs a dedicated queue backend, dead-letter handling, and operational dashboards before high-concurrency multi-instance deployment.
 - Azure Document Intelligence, audio transcription, and video parsing are placeholders.
 - Authentication, authorization, tenant isolation, and secrets management are not implemented.
 - Production migrations are not implemented; SQLite dev schema creation is lightweight.
@@ -147,26 +147,25 @@ Priority 1 is to turn the current orchestration platform into a single public **
 
 ### Priority 1: A2A Multimodal Parser Agent
 
-1. Replace the in-process background worker with a durable queue/worker for production.
+1. Replace the DB-backed local queue with a production queue backend, dead-letter workflow, and worker dashboard.
 2. Make remaining REST screens read from or delegate to the core agent task model where possible.
-3. Connect Home drag/drop flow to `POST /api/v1/agent/tasks/upload`.
-4. Persist explicit MCP/tool gateway planning records for non-parser tools when they are selected.
-5. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
-6. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
+3. Deepen Home/Parse agent task UX with direct task detail navigation and multi-task history.
+4. Deepen policy controls around subagents and task-level data residency beyond the current tool/category/external-service gateway checks.
+5. Add richer UI treatment for tool policy decisions and skill metadata inside Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage panels.
 
 ### Priority 2: Internal Capabilities Behind The Agent
 
 1. Define a persisted internal subagent registry beyond the current ADK phase-agent metadata.
 2. Connect the MCP/tool gateway to real OCR, VLM, document intelligence, vector search, policy, or external parsing tools through a consistent execution interface.
-3. Expand skills into richer planner-selectable capabilities with declared confidence behavior, cost/latency expectations, and compatibility metadata.
-4. Add policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
+3. Add persisted skill evaluation sets and quality calibration beyond the current planner metadata.
+4. Add persisted policy controls around internal subagents and reviewer routing.
 
 ### Priority 3: Agentic UI
 
-1. Expand Agent Plan and Agent Reasoning panels into Job Detail.
+1. Expand Agent Plan and Agent Reasoning panels with richer artifact detail views.
 2. Deepen the agent timeline with parser alternatives, tool decisions, and fallback rationale.
 3. Add full artifact detail views for file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
-4. Connect Home drag/drop to create a real parser-agent task.
+4. Connect remaining shortcut/template flows to create real parser-agent tasks.
 5. Implement global search with a backend `/search` endpoint across files, jobs, assets, parsers, skills, and agent tasks.
 
 ### Priority 4: Operational Hardening
@@ -174,7 +173,7 @@ Priority 1 is to turn the current orchestration platform into a single public **
 1. Reflect persisted review decisions in Home, Jobs, and Job Detail.
 2. Add backend trend series for dashboard sparklines instead of hiding them.
 3. Add tests for dashboard, review summary, jobs metrics, parser metrics, and new agent task routes.
-4. Add a background worker and async job/task state transitions.
+4. Add worker metrics, retry/dead-letter observability, and async job/task state transition dashboards.
 
 ## Files Future Agents Should Read First
 

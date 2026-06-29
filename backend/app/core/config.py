@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     lm_studio_max_pdf_pages: int = 3
     lm_studio_embedding_enabled: bool = False
     lm_studio_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    agent_task_background_enabled: bool = True
+    agent_task_max_attempts: int = 3
+    agent_task_lock_timeout_seconds: int = 300
+    agent_task_retry_backoff_seconds: int = 30
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]

@@ -33,7 +33,7 @@ flowchart TD
 | --- | --- | --- |
 | Try the full app | [Quick Start](#quick-start) | `make install`, `make api`, `make web`, then `http://localhost:3000` |
 | Call the agent from another service | [Consume It As An Agent API](#consume-it-as-an-agent-api) | Agent Card, task create, task status, artifacts, SSE events |
-| Run API-only | [Deployment Notes](#deployment-notes) | `make agent-api` or the backend container |
+| Run API-only | [Deployment Notes](#deployment-notes) | `make agent-api`, `make agent-worker`, or the backend container |
 | Add a parser | [Developer Contribution Guide](#developer-contribution-guide) | `backend/app/parsers`, parser registry metadata, parser tests |
 | Add a skill | [Developer Contribution Guide](#developer-contribution-guide) | `backend/app/skills`, schema, validation rules, skill tests |
 | Understand what is real today | [Implementation Status](#implementation-status) | Current vs placeholder capabilities |
@@ -48,8 +48,8 @@ flowchart TD
 | App console | Working | Next.js operations UI for parsing, jobs, assets, registries, review, observability. |
 | Local parsers | Working | HTML, DOCX, native PDF text, OCR paths, optional LM Studio VLM. |
 | Skills | Working MVP | Folder-backed skill packs with schemas and validation rules. |
-| MCP-style tools | Working MVP | Local callable registry and metadata endpoint; not a full MCP SDK transport yet. |
-| Durable worker | Planned | Current execution uses FastAPI in-process `BackgroundTasks`. |
+| MCP-style tools | Working MVP | Local callable registry, gateway metadata, and per-task governance allow/block trace; not a full MCP SDK transport yet. |
+| Durable worker | Working local queue | `make agent-worker` processes accepted persisted agent tasks with DB-backed claims, retries, heartbeat locks, and stale-lock recovery. |
 | Auth and tenancy | Planned | No production auth, RBAC, or tenant isolation yet. |
 | Production migrations | Planned | Dev schema creation is lightweight; Alembic should be added. |
 
@@ -77,6 +77,7 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Create Google ADK-backed parser-agent tasks from uploads, file IDs, multiple file IDs, inline text, existing asset IDs, and URL placeholders.
 - Poll task status or stream persisted task events over SSE.
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- Inspect per-task tool governance policy, allowed/blocked gateway tools, and planner-selectable skill metadata.
 - Use a Next.js console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
 
 ## Current Agent Capabilities
@@ -108,7 +109,7 @@ The ADK runtime currently registers these function tools:
 - `discover_skills_tool`
 - `tool_gateway_policy_tool`
 
-The internal tool gateway currently exposes capability metadata and governance filtering for:
+The internal tool gateway currently exposes capability metadata, per-task governance filtering, and persisted planning records for:
 
 | Tool gateway id | Category | Status |
 | --- | --- | --- |
@@ -117,6 +118,17 @@ The internal tool gateway currently exposes capability metadata and governance f
 | `skill.registry` | skill selection | Local skill discovery metadata. |
 | `quality.evaluator` | quality evaluation | Local quality scoring capability. |
 | `asset.publisher` | asset publishing | Local governed asset publishing capability. |
+| `ocr.tesseract` | OCR | Local OCR capability metadata. |
+| `vlm.lmstudio` | VLM parsing | Local model capability metadata. |
+| `document_intelligence.azure` | document intelligence | External placeholder; blocked unless task policy allows external services. |
+| `speech.transcription` | speech transcription | External placeholder metadata. |
+| `video.understanding` | video understanding | External placeholder metadata. |
+| `schema.validation` | schema validation | Local validation capability metadata. |
+| `table.normalization` | table normalization | Local normalization capability metadata. |
+| `policy.pii` | policy checks | Local PII/policy capability metadata. |
+| `embeddings.vector_search` | embeddings | External placeholder metadata, policy gated. |
+
+Each agent task stores a `tool_policy` snapshot in `input_payload`. The completed task trace also includes `tool_policy` decisions and `AgentToolCall` rows for gateway capabilities selected by the planner, so API clients can see whether a tool was planned, allowed, or blocked by governance.
 
 ### Parser Tools
 
@@ -151,7 +163,7 @@ The MVP includes a lightweight MCP-style tool registry at `GET /api/v1/mcp/tools
 
 ### Skills
 
-Skills are folder-backed capabilities under `backend/app/skills` and are also seeded into the skills registry.
+Skills are folder-backed capabilities under `backend/app/skills` and are also seeded into the skills registry. Agent traces include planner-selectable skill metadata such as required inputs, produced outputs, JSON schema, validation rules, confidence behavior, cost/latency posture, parser compatibility, and examples.
 
 | Skill id | Purpose | Supported document types |
 | --- | --- | --- |
@@ -240,6 +252,21 @@ make install-api
 make agent-api
 ```
 
+Run the persisted task worker in another terminal when you want accepted parser-agent tasks processed outside the API process:
+
+```bash
+make agent-worker
+```
+
+Worker behavior is controlled by:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `AGENT_TASK_BACKGROUND_ENABLED` | `true` | Runs API-created tasks through the worker in a FastAPI background task for local dev. Set to `false` when dedicated workers are the only executors. |
+| `AGENT_TASK_MAX_ATTEMPTS` | `3` | Maximum attempts before a task remains failed. |
+| `AGENT_TASK_LOCK_TIMEOUT_SECONDS` | `300` | Worker claim/heartbeat lock duration. Expired locks are recovered by another worker. |
+| `AGENT_TASK_RETRY_BACKOFF_SECONDS` | `30` | Base retry delay after failed attempts. |
+
 Docker:
 
 ```bash
@@ -319,7 +346,7 @@ curl -F "file=@sample_files/invoice.html;type=text/html" \
   http://localhost:8000/api/v1/agent/tasks/upload
 ```
 
-The response includes an accepted task. Execution continues in a background FastAPI task.
+The response includes an accepted task. In local dev, execution continues through the persisted worker claim flow inside a FastAPI background task. With `AGENT_TASK_BACKGROUND_ENABLED=false`, a dedicated `make agent-worker` process claims and executes queued tasks.
 
 ### 3. Create A Task From Existing Inputs
 
@@ -372,6 +399,15 @@ Other supported input modes:
 
 - `asset_id`: materializes an existing parsed asset as a new agent input.
 - `url`: records a governed local URL placeholder. The local runtime does not fetch remote content yet.
+
+Task governance currently supports these policy fields:
+
+| Field | Effect |
+| --- | --- |
+| `external_services_allowed` or `allow_external_services` | Allows gateway tools that require external services. Defaults to `false`. |
+| `allowed_tool_ids` | Optional allowlist; tools outside it are blocked in the policy snapshot. |
+| `blocked_tool_ids` or `denied_tool_ids` | Blocks named tools even if category or external-service policy would allow them. |
+| `blocked_tool_categories` | Blocks all tools in matching gateway categories. |
 
 ### 4. Track Status, Messages, Events, And Artifacts
 
@@ -650,7 +686,7 @@ Use this table to understand what is production-like today and what is intention
 | Capability | Current state | What to add for production |
 | --- | --- | --- |
 | Agent Card and task API | Working | Add auth, tenancy, quotas, and stronger schema/version compatibility. |
-| Task execution | In-process FastAPI background task | Durable queue, worker process, retries, dead-letter handling, crash recovery. |
+| Task execution | DB-backed queue with worker claims, retries, heartbeat locks, and stale-lock recovery | Dedicated production queue backend, dead-letter handling, concurrency controls, and operational dashboards. |
 | Event streaming | Persisted events plus SSE polling stream | Dedicated event bus or websocket/SSE broker for multi-instance deployments. |
 | File upload and local storage | Working local filesystem storage | Object storage, retention policies, antivirus/malware scanning, encryption. |
 | SQLite dev database | Working for local use | PostgreSQL plus Alembic migrations and operational backups. |
@@ -661,9 +697,9 @@ Use this table to understand what is production-like today and what is intention
 | Audio transcription | Placeholder adapter | Speech model integration, diarization, timestamps, language detection. |
 | Video parsing | Placeholder adapter | Frame sampling, audio extraction, visual summarization, transcript alignment. |
 | URL input | Local placeholder only | Fetching, allowlists, robots/policy checks, content storage, SSRF protection. |
-| MCP-style tools | Local callable registry | Full MCP SDK transport, auth, tool execution audit, remote tool governance. |
-| Skills | Working MVP skill packs | Rich compatibility metadata, confidence behavior, examples, evaluation sets. |
-| Review queue | Review items can be created | Durable approve/reject decisions and feedback into quality/training loops. |
+| MCP-style tools | Local callable registry plus persisted gateway policy trace | Full MCP SDK transport, auth, remote tool execution, richer audit, remote tool governance. |
+| Skills | Working MVP skill packs plus planner metadata in agent traces | Skill evaluation sets, deeper quality calibration, richer compatibility scoring. |
+| Review queue | Review items can be created and approve/reject decisions persist | Feedback into quality/training loops and reviewer assignment. |
 | Auth and tenancy | Not implemented | API keys/OAuth, RBAC, tenant isolation, audit actor identity. |
 | Global search | Planned | Indexed search across files, jobs, tasks, assets, skills, parsers, audit. |
 
@@ -676,6 +712,7 @@ Use this when another app or another agent will consume only the parser-agent AP
 ```bash
 make install-api
 make agent-api
+make agent-worker
 ```
 
 Minimum production concerns:
@@ -684,7 +721,9 @@ Minimum production concerns:
 - set `STORAGE_DIR` to durable storage or replace local storage with object storage
 - configure CORS for known clients only
 - add authentication before exposing the API outside a trusted network
-- replace in-process `BackgroundTasks` with a durable queue/worker
+- set `AGENT_TASK_BACKGROUND_ENABLED=false` when dedicated workers should be the only executors
+- run one or more `make agent-worker` processes for DB-backed persisted task execution
+- replace the DB-backed local queue with a production queue backend before high-concurrency multi-instance deployment
 
 ### Full App Deployment
 
@@ -706,7 +745,7 @@ For hosted environments, point that value at the deployed API base URL.
 
 - Alembic migrations.
 - API authentication and tenant isolation.
-- Durable background worker.
+- Production queue backend and worker dashboard.
 - Object storage for uploaded files and generated artifacts.
 - Secrets management for model and cloud parser credentials.
 - Structured logs, metrics, tracing, and alerting.
@@ -720,7 +759,7 @@ For hosted environments, point that value at the deployed API base URL.
 | Frontend cannot reach API | Wrong API base URL or backend not running | Start `make api` and set `NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1"`. |
 | Upload works but OCR output is empty | Tesseract is missing or image quality is low | Install `tesseract`, set `TESSERACT_CMD` if needed, try a clearer image. |
 | `mock_vlm` does not work | LM Studio is disabled or model lacks image support | Set LM Studio env vars and use an image-capable local model. |
-| Agent task stays non-terminal | Background task crashed or API process stopped | Check API logs, then retry. Durable worker support is planned. |
+| Agent task stays non-terminal | Worker is not running, lock has not expired yet, or task keeps failing retries | Start `make agent-worker`, check `attempt_count`, `worker_id`, `lock_expires_at`, and API logs. |
 | `local.db` has stale data | Local SQLite dev state persisted across runs | Run `make clean-state`. |
 | `npm run dev` fails | Dependencies missing or stale | Run `cd frontend && npm ci`. |
 | Import or package errors | Backend venv is missing dependencies | Run `make install-api` or `pip install -e ".[dev,postgres]"` in the active venv. |
@@ -730,7 +769,7 @@ For hosted environments, point that value at the deployed API base URL.
 
 This is a strong local MVP, not a production deployment template yet.
 
-- Agent execution uses in-process FastAPI `BackgroundTasks`; production should use a durable queue and worker.
+- Agent execution can run through FastAPI `BackgroundTasks` backed by the same persisted worker claim flow, or through dedicated `make agent-worker` processes.
 - URL input is recorded as a local placeholder; remote fetching is not implemented.
 - Azure Document Intelligence, speech transcription, and video parsing adapters are placeholders.
 - Legacy `.doc` files are not parsed directly; convert to DOCX or PDF.
@@ -738,20 +777,16 @@ This is a strong local MVP, not a production deployment template yet.
 - LM Studio VLM parsing requires a local model with image support.
 - PII and restricted document detection use lightweight heuristics.
 - SQLite schema creation is lightweight; production should use Alembic migrations.
-- Human review approve/reject decisions need full durable persistence.
 - Authentication, authorization, tenant isolation, and secrets management are not implemented.
-- Global search and Home drag/drop-to-agent-task are still planned work.
+- Global search is still planned work.
 
 ## Roadmap
 
 Near-term priorities:
 
-- Move background parser-agent execution to a durable queue/worker.
-- Make Home and Parse create real agent tasks directly from drag/drop.
-- Add agent-native UI panels for Agent Plan, Timeline, Reasoning, Artifacts, Quality, and Lineage.
-- Persist human review approve/reject decisions.
+- Replace the DB-backed local queue with a production queue backend and dead-letter workflow.
+- Deepen the agent-native UI panels for Agent Plan, Timeline, Reasoning, Artifacts, Quality, and Lineage.
 - Add global search across files, jobs, assets, parsers, skills, and agent tasks.
-- Persist explicit MCP/tool gateway planning and execution records beyond local metadata.
 - Add production migrations, auth, tenant isolation, and policy packs.
 
 Capability expansion:
@@ -759,8 +794,7 @@ Capability expansion:
 - Real Azure Document Intelligence adapter.
 - Real audio transcription adapter.
 - Real video understanding adapter.
-- Richer domain skill metadata: confidence behavior, cost, latency, parser compatibility, examples.
-- External MCP gateway execution for OCR, VLM, vector search, PII checks, schema validation, and table normalization.
+- Real execution adapters behind the tool gateway for external OCR, VLM, vector search, PII checks, schema validation, and table normalization where local placeholders are not enough.
 
 ## Good First Developer Paths
 
@@ -768,7 +802,7 @@ Capability expansion:
 - **Frontend developer**: wire Parse/Home flows to agent tasks and render the task timeline.
 - **Parser developer**: add a parser adapter under `backend/app/parsers` and register it in the parser registry seed data.
 - **Skill developer**: add a skill pack under `backend/app/skills` with schema, validation rules, and examples.
-- **Platform developer**: replace in-process background execution with a durable worker.
+- **Platform developer**: replace the DB-backed local queue with a production queue backend, dead-letter workflow, and worker dashboard.
 
 ## Developer Contribution Guide
 

@@ -13,8 +13,10 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.core.config import settings
 from backend.app.db.session import get_db
 from backend.app.domain.enums import (
     AgentTaskStatus,
@@ -40,6 +42,7 @@ from backend.app.schemas.agent import (
     AgentTaskDetail,
     AgentTaskRead,
 )
+from backend.app.services.agent_task_worker import agent_task_worker
 from backend.app.services.file_profiling import file_profiler
 from backend.app.services.file_storage import store_upload
 from backend.app.services.file_type import infer_file_type
@@ -78,7 +81,7 @@ def create_agent_task(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    background_tasks.add_task(multimodal_parser_agent.execute_task, db, task.id)
+    _schedule_agent_task(background_tasks, task.id, db)
     return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
 
 
@@ -122,7 +125,7 @@ async def create_agent_task_from_upload(
         title=f"Parse {file_record.original_filename}",
     )
     task = multimodal_parser_agent.create_task(db, payload)
-    background_tasks.add_task(multimodal_parser_agent.execute_task, db, task.id)
+    _schedule_agent_task(background_tasks, task.id, db)
     return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
 
 
@@ -245,3 +248,17 @@ def _load_task(db: Session, task_id: str) -> AgentTask:
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent task not found")
     return task
+
+
+def _schedule_agent_task(background_tasks: BackgroundTasks, task_id: str, db: Session) -> None:
+    if settings.agent_task_background_enabled:
+        background_tasks.add_task(_process_agent_task_background, task_id, db.get_bind())
+
+
+def _process_agent_task_background(task_id: str, bind: Engine) -> None:
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=bind)
+    db = session_factory()
+    try:
+        agent_task_worker.process_task(db, task_id)
+    finally:
+        db.close()

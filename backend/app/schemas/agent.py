@@ -70,6 +70,13 @@ class AgentTaskRead(APIModel):
     cost_profile: str
     latency_profile: str
     input_payload: dict[str, object]
+    worker_id: str | None
+    attempt_count: int
+    max_attempts: int
+    locked_at: datetime | None
+    lock_expires_at: datetime | None
+    heartbeat_at: datetime | None
+    next_attempt_at: datetime | None
     error_code: str | None
     error_message: str | None
     created_at: datetime

@@ -37,6 +37,13 @@ export type AgentTask = {
   cost_profile: string;
   latency_profile: string;
   input_payload: Record<string, unknown>;
+  worker_id: string | null;
+  attempt_count: number;
+  max_attempts: number;
+  locked_at: string | null;
+  lock_expires_at: string | null;
+  heartbeat_at: string | null;
+  next_attempt_at: string | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
@@ -122,6 +129,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const agentApi = {
+  listTasks(): Promise<AgentTask[]> {
+    if (USE_MOCKS) return Promise.resolve([mockAgentTask(["demo-file-contract"], "demo-agent-task", "completed")]);
+    return request<AgentTask[]>("/agent/tasks");
+  },
+
   async createTask(payload: CreateAgentTaskRequest): Promise<AgentTaskDetail> {
     if (USE_MOCKS) return mockAgentTask(payload.fileIds);
     const response = await request<AgentTaskCreateResponse>("/agent/tasks", {
@@ -142,6 +154,18 @@ export const agentApi = {
   getTask(taskId: string): Promise<AgentTaskDetail> {
     if (USE_MOCKS) return Promise.resolve(mockAgentTask(["demo-file-contract"], taskId, "completed"));
     return request<AgentTaskDetail>(`/agent/tasks/${taskId}`);
+  },
+
+  async findTaskByJobId(jobId: string): Promise<AgentTaskDetail | null> {
+    if (USE_MOCKS) return mockAgentTask(["demo-file-contract"], "demo-agent-task", "completed");
+    const tasks = await this.listTasks();
+    const directMatch = tasks.find((task) => task.job_id === jobId);
+    const payloadMatch = tasks.find((task) => {
+      const jobIds = task.input_payload.job_ids;
+      return Array.isArray(jobIds) && jobIds.map(String).includes(jobId);
+    });
+    const task = directMatch ?? payloadMatch;
+    return task ? this.getTask(task.id) : null;
   },
 
   async getEvents(taskId: string): Promise<JobEvent[]> {
@@ -230,6 +254,13 @@ function mockAgentTask(
     cost_profile: "balanced",
     latency_profile: "interactive",
     input_payload: { materialized_file_ids: fileIds, input_count: fileIds.length },
+    worker_id: null,
+    attempt_count: 0,
+    max_attempts: 3,
+    locked_at: null,
+    lock_expires_at: null,
+    heartbeat_at: null,
+    next_attempt_at: null,
     error_code: null,
     error_message: null,
     created_at: now,

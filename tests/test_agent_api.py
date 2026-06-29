@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import sleep
 
@@ -12,8 +13,9 @@ from backend.app.db.base import Base
 from backend.app.db.seed import seed_registry_data
 from backend.app.domain.enums import FileType, JobStatus, Modality
 from backend.app.main import app
-from backend.app.models.domain import FileProfile, FileRecord
+from backend.app.models.domain import AgentTask, FileProfile, FileRecord
 from backend.app.schemas.agent import AgentTaskCreate
+from backend.app.services.agent_task_worker import AgentTaskWorker, agent_task_worker
 from backend.app.services.multimodal_parser_agent import multimodal_parser_agent
 
 
@@ -147,13 +149,42 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             ]
             assert task["quality_judgement"]["status"] == "passed"
             assert task["lineage"]["asset_id"]
-            assert task["tool_calls"][0]["tool_id"] == "parser:html_text"
+            tool_ids = {tool_call["tool_id"] for tool_call in task["tool_calls"]}
+            assert "parser.registry" in tool_ids
+            assert "skill.registry" in tool_ids
+            assert "schema.validation" in tool_ids
+            assert "policy.pii" in tool_ids
+            assert "parser:html_text" in tool_ids
+            gateway_call = [
+                tool_call
+                for tool_call in task["tool_calls"]
+                if tool_call["tool_id"] == "parser.registry"
+            ][0]
+            assert gateway_call["status"] == "planned"
+            assert gateway_call["response_payload"]["allowed"] is True
+            parser_call = [
+                tool_call
+                for tool_call in task["tool_calls"]
+                if tool_call["tool_id"] == "parser:html_text"
+            ][0]
+            assert parser_call["status"] == "complete"
+            tool_policy = task["input_payload"]["tool_policy"]
+            assert tool_policy["external_services_allowed"] is False
+            assert "document_intelligence.azure" in tool_policy["blocked_tool_ids"]
+            tool_policy_decision = [
+                decision
+                for decision in task["decisions"]
+                if decision["decision_type"] == "tool_policy"
+            ][0]
+            assert tool_policy_decision["selected_option"] == "local_tools_only"
             reasoning = [
                 artifact
                 for artifact in task["artifacts"]
                 if artifact["title"] == "Agent reasoning"
             ][0]
             assert reasoning["payload"]["agent_framework"]["framework"] == "google_adk"
+            assert reasoning["payload"]["tool_policy"]["external_services_allowed"] is False
+            assert reasoning["payload"]["planner_selectable_skills"]
 
             artifacts = client.get(f"/api/v1/agent/tasks/{task_id}/artifacts").json()
             artifact_kinds = {artifact["kind"] for artifact in artifacts}
@@ -182,6 +213,47 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             assert stream_response.status_code == 200
             assert "text/event-stream" in stream_response.headers["content-type"]
             assert "event: step.publish" in stream_response.text
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_agent_task_persists_external_tool_policy_snapshot(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_html_file(db, tmp_path)
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/agent/tasks",
+                json={
+                    "file_id": file_record.id,
+                    "governance_constraints": {
+                        "external_services_allowed": True,
+                        "blocked_tool_ids": ["embeddings.vector_search"],
+                    },
+                },
+            )
+            assert response.status_code == 202
+            task = wait_for_terminal_task(client, response.json()["task"]["id"])
+            policy = task["input_payload"]["tool_policy"]
+            assert policy["external_services_allowed"] is True
+            assert "document_intelligence.azure" in policy["allowed_tool_ids"]
+            assert "embeddings.vector_search" in policy["blocked_tool_ids"]
+            blocked_embedding = [
+                tool
+                for tool in policy["blocked_tools"]
+                if tool["tool_id"] == "embeddings.vector_search"
+            ][0]
+            assert blocked_embedding["blocked_reasons"] == ["blocked_tool_id"]
+            decision = [
+                item for item in task["decisions"] if item["decision_type"] == "tool_policy"
+            ][0]
+            assert decision["selected_option"] == "external_tools_allowed"
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()
@@ -329,4 +401,85 @@ def test_cancelled_agent_task_does_not_execute(tmp_path: Path) -> None:
     after_execute = multimodal_parser_agent.execute_task(db, task.id)
     assert after_execute.status == "cancelled"
     assert after_execute.job_id is None
+    db.close()
+
+
+def test_agent_worker_processes_persisted_accepted_task(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_html_file(db, tmp_path)
+    task = multimodal_parser_agent.create_task(db, AgentTaskCreate(file_id=file_record.id))
+
+    processed = agent_task_worker.process_next(db)
+
+    assert processed is not None
+    assert processed.id == task.id
+    assert processed.status == "completed"
+    assert processed.job_id is not None
+    assert processed.worker_id is None
+    assert processed.lock_expires_at is None
+    assert processed.attempt_count == 1
+    db.close()
+
+
+def test_agent_worker_retries_failed_task_then_marks_failed() -> None:
+    db = make_session()
+    task = AgentTask(
+        status="accepted",
+        title="Bad queued task",
+        summary="Missing materialized input should fail.",
+        requested_output_contract={},
+        governance_constraints={},
+        input_payload={},
+        max_attempts=2,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    worker = AgentTaskWorker(
+        worker_id="test-worker",
+        lock_timeout_seconds=10,
+        retry_backoff_seconds=0,
+    )
+    first_attempt = worker.process_next(db)
+    assert first_attempt is not None
+    assert first_attempt.status == "accepted"
+    assert first_attempt.attempt_count == 1
+    assert first_attempt.next_attempt_at is not None
+    assert first_attempt.worker_id is None
+
+    second_attempt = worker.process_next(db)
+    assert second_attempt is not None
+    assert second_attempt.status == "failed"
+    assert second_attempt.attempt_count == 2
+    assert second_attempt.worker_id is None
+    assert second_attempt.error_code == "ValueError"
+    db.close()
+
+
+def test_agent_worker_recovers_stale_lock(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_html_file(db, tmp_path)
+    task = multimodal_parser_agent.create_task(db, AgentTaskCreate(file_id=file_record.id))
+    expired = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+    task.status = "executing"
+    task.worker_id = "dead-worker"
+    task.attempt_count = 1
+    task.locked_at = expired - timedelta(minutes=5)
+    task.lock_expires_at = expired
+    task.heartbeat_at = expired - timedelta(minutes=5)
+    db.commit()
+
+    worker = AgentTaskWorker(worker_id="replacement-worker", lock_timeout_seconds=10)
+    recovered = worker.recover_stale_locks(db)
+    db.refresh(task)
+
+    assert recovered == 1
+    assert task.status == "accepted"
+    assert task.worker_id is None
+    assert task.lock_expires_at is None
+    processed = worker.process_next(db)
+    assert processed is not None
+    assert processed.status == "completed"
+    assert processed.attempt_count == 2
     db.close()
