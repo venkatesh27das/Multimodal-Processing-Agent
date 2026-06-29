@@ -14,6 +14,5 @@ def test_output_contract_helpers_create_placeholders() -> None:
 
     assert chunks[0]["chunk_id"] == "chunk-0"
     assert embeddings[0]["model"] == "mock-embedding-v0"
-    assert {entity["text"] for entity in entities} >= {"Acme", "Corp", "Globex", "Corporation"}
+    assert {entity["text"] for entity in entities} >= {"Acme Corp", "Globex Corporation"}
     assert relationships[0]["type"] == "co_occurs_with"
-
