@@ -10,6 +10,7 @@ The project is intentionally split between deterministic enterprise controls and
 - File profiling with modality, file type, text/scanned signals, and recommended strategy.
 - Parser registry with local parsers and placeholder managed/media adapters.
 - Parser selection, planning, synchronous execution, fallback handling, quality evaluation, and asset publishing.
+- A2A-style Multimodal Parser Agent API with Agent Card, task lifecycle, messages, artifacts, events, reasoning trace, quality judgement, and lineage for the current synchronous file-id flow.
 - Skills registry backed by folder-based skill packs in `backend/app/skills`.
 - Observability, audit, dashboard, jobs, parser, skill, review, and asset APIs.
 - Next.js enterprise console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
@@ -48,6 +49,27 @@ tests                       backend unit and service tests
 
 ## Local Setup
 
+The shortest path for a fresh clone is:
+
+```bash
+make install
+cp .env.example .env
+```
+
+Then run the API and frontend in two terminals:
+
+```bash
+make api
+make web
+```
+
+For API-only agent work, only run:
+
+```bash
+make install-api
+make agent-api
+```
+
 ### Backend
 
 ```bash
@@ -70,6 +92,13 @@ Health check:
 
 ```bash
 curl http://localhost:8000/api/v1/health
+```
+
+Agent Card:
+
+```bash
+curl http://localhost:8000/.well-known/agent-card.json
+curl http://localhost:8000/api/v1/agent/card
 ```
 
 API docs:
@@ -96,7 +125,7 @@ NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1"
 ### Docker Compose
 
 ```bash
-docker compose up --build
+make docker-up
 ```
 
 Services:
@@ -175,6 +204,29 @@ curl -X POST http://localhost:8000/api/v1/jobs \
   }'
 ```
 
+Create a parser-agent task from an uploaded file:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agent/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_id": "replace-with-uploaded-file-id",
+    "requested_output_contract": {
+      "parsed_text": true,
+      "tables": true,
+      "entities": true,
+      "relationships": true,
+      "evidence_spans": true
+    },
+    "quality_target": "balanced",
+    "cost_profile": "balanced",
+    "latency_profile": "interactive",
+    "governance_constraints": {
+      "external_services_allowed": true
+    }
+  }'
+```
+
 Operational checks:
 
 ```bash
@@ -192,18 +244,31 @@ More examples are in [docs/api_examples.md](docs/api_examples.md).
 Backend:
 
 ```bash
-pytest
-python -m ruff check backend tests
-PYTHONPYCACHEPREFIX=/tmp/mmpa-pycache python3 -m compileall backend/app
+make verify-api
 ```
 
 Frontend:
 
 ```bash
-cd frontend
-npm run typecheck
-npm run lint
-npm run build
+make verify-web
+```
+
+Full verification:
+
+```bash
+make verify
+```
+
+Cleanup generated local files:
+
+```bash
+make clean
+```
+
+Cleanup generated files plus local runtime database/storage:
+
+```bash
+make clean-state
 ```
 
 ## Handoff Docs

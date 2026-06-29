@@ -71,40 +71,52 @@ GET  /api/v1/agent/tasks/{task_id}/events
 
 ## How To Run
 
+Recommended one-command setup:
+
+```bash
+make install
+cp .env.example .env
+```
+
 Backend:
 
 ```bash
-source .venv/bin/activate
-uvicorn backend.app.main:app --reload --port 8000
+make api
 ```
 
 Frontend:
 
 ```bash
-cd frontend
-npm install
-npm run dev -- --port 3000
+make web
 ```
 
 Open `http://localhost:3000`.
+
+API-only agent work:
+
+```bash
+make install-api
+make agent-api
+```
+
+Docker deployment:
+
+```bash
+make docker-up
+```
 
 ## Verification Commands
 
 Backend:
 
 ```bash
-pytest
-python -m ruff check backend tests
-PYTHONPYCACHEPREFIX=/tmp/mmpa-pycache python3 -m compileall backend/app
+make verify-api
 ```
 
 Frontend:
 
 ```bash
-cd frontend
-npm run typecheck
-npm run lint
-npm run build
+make verify-web
 ```
 
 ## Known Gaps
