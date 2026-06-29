@@ -9,21 +9,49 @@ This repo is both:
 
 The core idea is simple: external clients should not need to know which parser, OCR engine, skill, fallback, or review rule to call. They ask one agent to transform one or more multimodal inputs into structured assets with quality, lineage, and audit context.
 
-```text
-External app / user / another agent
-        |
-        v
-A2A-style Multimodal Parser Agent API
-        |
-        v
-Observe -> Plan -> Act -> Evaluate -> Repair -> Publish
-        |
-        +-- file profiling
-        +-- parser registry and parser adapters
-        +-- skill discovery and execution
-        +-- governed tool gateway metadata
-        +-- quality, review, audit, lineage, and asset publishing
+```mermaid
+flowchart TD
+    Client["External app, user, or another agent"] --> API["A2A-style Multimodal Parser Agent API"]
+    API --> Agent["Google ADK-backed MultimodalParserAgent"]
+    Agent --> Observe["Observe: profile files and modality"]
+    Observe --> Plan["Plan: parser, skill, fallback, quality, policy"]
+    Plan --> Act["Act: parser adapters, skills, tools"]
+    Act --> Evaluate["Evaluate: confidence, completeness, schema, consistency"]
+    Evaluate --> Repair["Repair: fallback, normalize, route to review"]
+    Repair --> Publish["Publish: assets, lineage, audit"]
+
+    Agent --> Registry["Parser registry"]
+    Agent --> Skills["Skills runtime"]
+    Agent --> Gateway["Tool gateway and MCP-style tools"]
+    Agent --> Governance["Governance and audit"]
+    Publish --> Assets["Trusted structured assets"]
 ```
+
+## Choose Your Path
+
+| Goal | Start here | What you will use |
+| --- | --- | --- |
+| Try the full app | [Quick Start](#quick-start) | `make install`, `make api`, `make web`, then `http://localhost:3000` |
+| Call the agent from another service | [Consume It As An Agent API](#consume-it-as-an-agent-api) | Agent Card, task create, task status, artifacts, SSE events |
+| Run API-only | [Deployment Notes](#deployment-notes) | `make agent-api` or the backend container |
+| Add a parser | [Developer Contribution Guide](#developer-contribution-guide) | `backend/app/parsers`, parser registry metadata, parser tests |
+| Add a skill | [Developer Contribution Guide](#developer-contribution-guide) | `backend/app/skills`, schema, validation rules, skill tests |
+| Understand what is real today | [Implementation Status](#implementation-status) | Current vs placeholder capabilities |
+| Debug setup | [Troubleshooting](#troubleshooting) | Port, env, OCR, frontend/API, SQLite/storage fixes |
+
+## Capability Status
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Agent API | Working | Agent Card, task create/list/detail/cancel, messages, artifacts, events, SSE stream. |
+| Google ADK runtime | Working | ADK-backed phase-agent wrapper around deterministic parser orchestration. |
+| App console | Working | Next.js operations UI for parsing, jobs, assets, registries, review, observability. |
+| Local parsers | Working | HTML, DOCX, native PDF text, OCR paths, optional LM Studio VLM. |
+| Skills | Working MVP | Folder-backed skill packs with schemas and validation rules. |
+| MCP-style tools | Working MVP | Local callable registry and metadata endpoint; not a full MCP SDK transport yet. |
+| Durable worker | Planned | Current execution uses FastAPI in-process `BackgroundTasks`. |
+| Auth and tenancy | Planned | No production auth, RBAC, or tenant isolation yet. |
+| Production migrations | Planned | Dev schema creation is lightweight; Alembic should be added. |
 
 ## Why This Exists
 
@@ -165,15 +193,15 @@ The UI is intentionally compact and operations-focused. The screenshots below ar
 
 | Home | Parse |
 | --- | --- |
-| ![Home screen](application%20wireframes/Home%20Screen.png) | ![Parse screen](application%20wireframes/Parse%20Screen1.png) |
+| ![Home screen](application%20wireframes/Home%20Screen.png)<br>Operational entry point for recent activity, parser health, review pressure, and starting parsing work. | ![Parse screen](application%20wireframes/Parse%20Screen1.png)<br>Upload and parse workflow surface for turning documents into agent-backed parsing runs. |
 
 | Jobs | Review Queue |
 | --- | --- |
-| ![Jobs screen](application%20wireframes/Jobs%20Screen.png) | ![Review queue screen](application%20wireframes/Review%20Queue%20Screen.png) |
+| ![Jobs screen](application%20wireframes/Jobs%20Screen.png)<br>Run history, parser choice, quality state, and operational metadata for parsing jobs. | ![Review queue screen](application%20wireframes/Review%20Queue%20Screen.png)<br>Human review queue for uncertain outputs, low-confidence fields, and review rationale. |
 
 | Assets | Observability |
 | --- | --- |
-| ![Assets screen](application%20wireframes/Assets%20Screen.png) | ![Observability screen](application%20wireframes/Observabiity%20Screen.png) |
+| ![Assets screen](application%20wireframes/Assets%20Screen.png)<br>Published parsed assets with structured output, lineage, parser, quality, and confidence context. | ![Observability screen](application%20wireframes/Observabiity%20Screen.png)<br>System, parser, quality, and audit signals for operating the parsing platform. |
 
 ## Quick Start
 
@@ -223,6 +251,53 @@ Services:
 - API: `http://localhost:8000`
 - Web: `http://localhost:3000`
 - PostgreSQL: `localhost:5432`
+
+## Ten-Minute Happy Path
+
+This is the quickest copy-paste path to prove the agent works locally.
+
+### Terminal 1: Start The API
+
+```bash
+make install-api
+cp .env.example .env
+make agent-api
+```
+
+Wait until the API is serving on `http://localhost:8000`.
+
+### Terminal 2: Create And Inspect An Agent Task
+
+```bash
+curl http://localhost:8000/api/v1/health
+
+curl -F "file=@sample_files/invoice.html;type=text/html" \
+  http://localhost:8000/api/v1/agent/tasks/upload
+```
+
+Copy the returned `task.id`, then inspect it:
+
+```bash
+TASK_ID="replace-with-task-id"
+
+curl http://localhost:8000/api/v1/agent/tasks/$TASK_ID
+curl http://localhost:8000/api/v1/agent/tasks/$TASK_ID/artifacts
+curl http://localhost:8000/api/v1/agent/tasks/$TASK_ID/events
+```
+
+Start the frontend:
+
+```bash
+make web
+```
+
+Open `http://localhost:3000`, then visit Home, Parse, Jobs, Assets, and Observability.
+
+Expected result:
+
+- the task reaches `completed` or `awaiting_review`
+- artifacts include `file_profile`, `parsing_plan`, `parser_output`, `quality_report`, `parsed_asset`, `lineage_report`, and `agent_reasoning`
+- a parsed asset is created with parser, quality, lineage, and audit context
 
 ## Consume It As An Agent API
 
@@ -317,7 +392,90 @@ submitted -> accepted -> observing -> planning -> executing
 
 They can also become `awaiting_review`, `cancelled`, or `failed`.
 
-### 5. Minimal Python Client
+### 5. Example Response Shapes
+
+Agent Card summary:
+
+```json
+{
+  "name": "multimodal-parser-agent",
+  "display_name": "Multimodal Parser Agent",
+  "capabilities": [
+    "google_adk_runtime",
+    "file_profiling",
+    "parser_selection",
+    "parsing",
+    "quality_evaluation",
+    "asset_publishing"
+  ],
+  "input_modes": ["uploaded_file", "file_id", "asset_id", "url_placeholder", "text_payload"],
+  "streaming": {"supported": true, "transport": "pollable_events_and_sse"}
+}
+```
+
+Task creation response:
+
+```json
+{
+  "task": {
+    "id": "uuid",
+    "status": "accepted",
+    "title": "Parse invoice.html",
+    "summary": "Parser-agent task accepted and queued for background execution.",
+    "file_id": "uuid",
+    "job_id": null,
+    "input_payload": {
+      "file_id": "uuid",
+      "materialized_file_ids": ["uuid"],
+      "input_count": 1
+    }
+  }
+}
+```
+
+Task detail response, abbreviated:
+
+```json
+{
+  "id": "uuid",
+  "status": "completed",
+  "job_id": "uuid",
+  "plan": {"selected_parser_id": "html_text", "selected_skill_id": null},
+  "steps": [{"kind": "observe", "status": "completed"}],
+  "quality_judgement": {"status": "passed"},
+  "lineage": {"asset_id": "uuid"},
+  "artifacts": [
+    {"kind": "file_profile", "title": "File profile"},
+    {"kind": "parsing_plan", "title": "Parsing plan"},
+    {"kind": "parser_output", "title": "Parser output: html_text"},
+    {"kind": "quality_report", "title": "Quality report"},
+    {"kind": "parsed_asset", "title": "Parsed asset"},
+    {"kind": "agent_reasoning", "title": "Agent reasoning"}
+  ]
+}
+```
+
+Artifact response item:
+
+```json
+{
+  "id": "uuid",
+  "task_id": "uuid",
+  "kind": "parsed_asset",
+  "sequence": 14,
+  "title": "Parsed asset",
+  "summary": "Published governed parsed asset uuid.",
+  "payload": {
+    "id": "uuid",
+    "parser_used": "html_text",
+    "structured_data": {},
+    "quality_report": {},
+    "lineage": {}
+  }
+}
+```
+
+### 6. Minimal Python Client
 
 ```python
 import time
@@ -485,6 +643,89 @@ Cleanup generated files plus local database/storage:
 make clean-state
 ```
 
+## Implementation Status
+
+Use this table to understand what is production-like today and what is intentionally still an MVP placeholder.
+
+| Capability | Current state | What to add for production |
+| --- | --- | --- |
+| Agent Card and task API | Working | Add auth, tenancy, quotas, and stronger schema/version compatibility. |
+| Task execution | In-process FastAPI background task | Durable queue, worker process, retries, dead-letter handling, crash recovery. |
+| Event streaming | Persisted events plus SSE polling stream | Dedicated event bus or websocket/SSE broker for multi-instance deployments. |
+| File upload and local storage | Working local filesystem storage | Object storage, retention policies, antivirus/malware scanning, encryption. |
+| SQLite dev database | Working for local use | PostgreSQL plus Alembic migrations and operational backups. |
+| HTML, DOCX, native PDF parsing | Working local parsers | Broader fixtures, benchmarks, and parser-specific quality calibration. |
+| Image OCR | Works when Tesseract is installed | OCR packaging, language packs, image preprocessing, confidence calibration. |
+| LM Studio VLM | Optional local adapter | Managed model routing, cost controls, redaction, data residency policy. |
+| Azure Document Intelligence | Placeholder adapter | Credentials, SDK integration, policy controls, tests, cost/latency accounting. |
+| Audio transcription | Placeholder adapter | Speech model integration, diarization, timestamps, language detection. |
+| Video parsing | Placeholder adapter | Frame sampling, audio extraction, visual summarization, transcript alignment. |
+| URL input | Local placeholder only | Fetching, allowlists, robots/policy checks, content storage, SSRF protection. |
+| MCP-style tools | Local callable registry | Full MCP SDK transport, auth, tool execution audit, remote tool governance. |
+| Skills | Working MVP skill packs | Rich compatibility metadata, confidence behavior, examples, evaluation sets. |
+| Review queue | Review items can be created | Durable approve/reject decisions and feedback into quality/training loops. |
+| Auth and tenancy | Not implemented | API keys/OAuth, RBAC, tenant isolation, audit actor identity. |
+| Global search | Planned | Indexed search across files, jobs, tasks, assets, skills, parsers, audit. |
+
+## Deployment Notes
+
+### API-Only Agent Deployment
+
+Use this when another app or another agent will consume only the parser-agent API.
+
+```bash
+make install-api
+make agent-api
+```
+
+Minimum production concerns:
+
+- set `DATABASE_URL` to PostgreSQL
+- set `STORAGE_DIR` to durable storage or replace local storage with object storage
+- configure CORS for known clients only
+- add authentication before exposing the API outside a trusted network
+- replace in-process `BackgroundTasks` with a durable queue/worker
+
+### Full App Deployment
+
+Use this when humans need the operations console.
+
+```bash
+make docker-up
+```
+
+The frontend expects:
+
+```env
+NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1"
+```
+
+For hosted environments, point that value at the deployed API base URL.
+
+### Recommended Production Additions
+
+- Alembic migrations.
+- API authentication and tenant isolation.
+- Durable background worker.
+- Object storage for uploaded files and generated artifacts.
+- Secrets management for model and cloud parser credentials.
+- Structured logs, metrics, tracing, and alerting.
+- Policy packs for external tools, data residency, PII, and restricted documents.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `make api` cannot start | Port 8000 is already in use | Run with `API_PORT=8001 make api` or stop the existing process. |
+| Frontend cannot reach API | Wrong API base URL or backend not running | Start `make api` and set `NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1"`. |
+| Upload works but OCR output is empty | Tesseract is missing or image quality is low | Install `tesseract`, set `TESSERACT_CMD` if needed, try a clearer image. |
+| `mock_vlm` does not work | LM Studio is disabled or model lacks image support | Set LM Studio env vars and use an image-capable local model. |
+| Agent task stays non-terminal | Background task crashed or API process stopped | Check API logs, then retry. Durable worker support is planned. |
+| `local.db` has stale data | Local SQLite dev state persisted across runs | Run `make clean-state`. |
+| `npm run dev` fails | Dependencies missing or stale | Run `cd frontend && npm ci`. |
+| Import or package errors | Backend venv is missing dependencies | Run `make install-api` or `pip install -e ".[dev,postgres]"` in the active venv. |
+| Docker web cannot call API | Frontend env points to localhost from the wrong network context | Set `NEXT_PUBLIC_API_BASE_URL` for the deployed browser-facing API URL. |
+
 ## Current Limitations
 
 This is a strong local MVP, not a production deployment template yet.
@@ -528,6 +769,81 @@ Capability expansion:
 - **Parser developer**: add a parser adapter under `backend/app/parsers` and register it in the parser registry seed data.
 - **Skill developer**: add a skill pack under `backend/app/skills` with schema, validation rules, and examples.
 - **Platform developer**: replace in-process background execution with a durable worker.
+
+## Developer Contribution Guide
+
+### Add A Parser
+
+1. Create or update a parser adapter under `backend/app/parsers`.
+2. Implement the parser base contract from `backend/app/parsers/base.py`.
+3. Add parser metadata in `backend/app/services/parser_registry.py`.
+4. Ensure the parser advertises supported file types and modalities.
+5. Add tests for parser support and execution behavior.
+6. Run:
+
+```bash
+make verify-api
+```
+
+Good parser additions include:
+
+- a real Azure Document Intelligence adapter
+- stronger PDF table extraction
+- better HTML readability cleanup
+- image preprocessing before OCR
+- speech transcription
+- video frame/audio parsing
+
+### Add A Skill
+
+1. Create a folder under `backend/app/skills/{skill_id}`.
+2. Add `SKILL.md`, `schema.json`, and `validation_rules.yaml`.
+3. Add examples under the skill folder when useful.
+4. Seed or register the skill in `backend/app/db/seed.py` if it should appear in the database-backed registry.
+5. Add tests in `tests/test_skills_framework.py` or a new focused test file.
+
+Skill packs should state:
+
+- what documents they support
+- required inputs
+- produced outputs
+- JSON schema
+- validation rules
+- examples
+- known limits
+
+### Add An MCP-Style Tool
+
+1. Add metadata and a handler in `backend/app/mcp/server.py`.
+2. Keep the input schema explicit and JSON-like.
+3. Map the handler to an existing service where possible.
+4. Return concise machine-readable payloads.
+5. Add tests in `tests/test_mcp_server.py`.
+
+Current MCP-style tools are local callables. A future MCP SDK adapter can wrap the same registry.
+
+### Add An Agent Artifact Or Trace Record
+
+1. Add or reuse an `AgentArtifactKind` in `backend/app/domain/enums.py`.
+2. Persist the artifact from `backend/app/services/multimodal_parser_agent.py`.
+3. Include both a human-readable summary and a machine-readable JSON payload.
+4. Add API tests in `tests/test_agent_api.py`.
+5. Update the UI when the artifact should be visible to users.
+
+### Add A Frontend Screen Or Agent Panel
+
+1. Add typed API access in `frontend/api`.
+2. Use hooks in `frontend/hooks` for stateful fetching.
+3. Keep screens in `frontend/app`.
+4. Use shared UI components from `frontend/components`.
+5. Preserve the compact 14px enterprise density.
+6. Run:
+
+```bash
+cd frontend
+npm run typecheck
+npm run lint
+```
 
 ## Handoff And Design Docs
 
