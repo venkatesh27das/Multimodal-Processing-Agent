@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import sleep
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -12,6 +13,8 @@ from backend.app.db.seed import seed_registry_data
 from backend.app.domain.enums import FileType, JobStatus, Modality
 from backend.app.main import app
 from backend.app.models.domain import FileProfile, FileRecord
+from backend.app.schemas.agent import AgentTaskCreate
+from backend.app.services.multimodal_parser_agent import multimodal_parser_agent
 
 
 def make_session():
@@ -56,6 +59,18 @@ def add_html_file(db, tmp_path: Path) -> FileRecord:
     db.add_all([file_record, profile])
     db.commit()
     return file_record
+
+
+def wait_for_terminal_task(client: TestClient, task_id: str) -> dict[str, object]:
+    terminal = {"awaiting_review", "cancelled", "completed", "failed"}
+    for _ in range(20):
+        response = client.get(f"/api/v1/agent/tasks/{task_id}")
+        assert response.status_code == 200
+        task = response.json()
+        if task["status"] in terminal:
+            return task
+        sleep(0.05)
+    raise AssertionError("Agent task did not reach a terminal state")
 
 
 def test_agent_card_is_discoverable() -> None:
@@ -107,7 +122,9 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             assert response.status_code == 202
             task = response.json()["task"]
             task_id = task["id"]
+            assert task["status"] == "accepted"
 
+            task = wait_for_terminal_task(client, task_id)
             assert task["status"] == "completed"
             assert task["job_id"]
             assert task["plan"]["selected_parser_id"] == "html_text"
@@ -143,7 +160,11 @@ def test_agent_task_runs_parser_flow_and_persists_trace(tmp_path: Path) -> None:
             }.issubset(artifact_kinds)
 
             messages = client.get(f"/api/v1/agent/tasks/{task_id}/messages").json()
-            assert [message["role"] for message in messages] == ["user", "agent", "agent"]
+            assert messages[0]["role"] == "user"
+            message_titles = {message["title"] for message in messages}
+            assert "ADK observe" in message_titles
+            assert "ADK publish" in message_titles
+            assert "Task completed" in message_titles
 
             events = client.get(f"/api/v1/agent/tasks/{task_id}/events").json()
             assert events[0]["event_type"] == "message.user"
@@ -185,11 +206,26 @@ def test_agent_task_can_be_created_directly_from_upload(tmp_path: Path) -> None:
             )
             assert response.status_code == 202
             task = response.json()["task"]
-            assert task["status"] == "completed"
             assert task["file_id"]
+            task = wait_for_terminal_task(client, task["id"])
+            assert task["status"] == "completed"
             assert task["plan"]["selected_parser_id"] == "html_text"
             assert task["input_payload"]["file_id"] == task["file_id"]
     finally:
         settings.storage_dir = original_storage_dir
         app.dependency_overrides.pop(get_db, None)
         db.close()
+
+
+def test_cancelled_agent_task_does_not_execute(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_html_file(db, tmp_path)
+    task = multimodal_parser_agent.create_task(db, AgentTaskCreate(file_id=file_record.id))
+
+    cancelled = multimodal_parser_agent.cancel_task(db, task)
+    assert cancelled.status == "cancelled"
+
+    after_execute = multimodal_parser_agent.execute_task(db, task.id)
+    assert after_execute.status == "cancelled"
+    assert after_execute.job_id is None
+    db.close()

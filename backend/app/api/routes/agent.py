@@ -1,12 +1,28 @@
 import json
 from collections.abc import Iterable
+from time import sleep
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.domain.enums import CostProfile, JobStatus, LatencyProfile, QualityTarget
+from backend.app.domain.enums import (
+    AgentTaskStatus,
+    CostProfile,
+    JobStatus,
+    LatencyProfile,
+    QualityTarget,
+)
 from backend.app.models.domain import (
     AgentArtifact,
     AgentMessage,
@@ -50,6 +66,7 @@ def get_agent_card(db: Session = Depends(get_db)) -> AgentCard:
 )
 def create_agent_task(
     payload: AgentTaskCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> AgentTaskCreateResponse:
     try:
@@ -61,6 +78,7 @@ def create_agent_task(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+    background_tasks.add_task(multimodal_parser_agent.execute_task, db, task.id)
     return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
 
 
@@ -70,6 +88,7 @@ def create_agent_task(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_agent_task_from_upload(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     quality_target: QualityTarget = Form(QualityTarget.BALANCED),
     cost_profile: CostProfile = Form(CostProfile.BALANCED),
@@ -103,6 +122,7 @@ async def create_agent_task_from_upload(
         title=f"Parse {file_record.original_filename}",
     )
     task = multimodal_parser_agent.create_task(db, payload)
+    background_tasks.add_task(multimodal_parser_agent.execute_task, db, task.id)
     return AgentTaskCreateResponse(task=multimodal_parser_agent.detail(db, task))
 
 
@@ -152,13 +172,27 @@ def get_agent_task_events(task_id: str, db: Session = Depends(get_db)) -> list[A
 @router.get("/tasks/{task_id}/events/stream")
 def stream_agent_task_events(task_id: str, db: Session = Depends(get_db)) -> StreamingResponse:
     _load_task(db, task_id)
-    events = _task_events(db, task_id)
 
     def event_stream() -> Iterable[str]:
-        for event in events:
-            payload = event.model_dump(mode="json")
-            yield f"event: {event.event_type}\n"
-            yield f"data: {json.dumps(payload)}\n\n"
+        seen: set[str] = set()
+        while True:
+            for event in _task_events(db, task_id):
+                if event.id in seen:
+                    continue
+                seen.add(event.id)
+                payload = event.model_dump(mode="json")
+                yield f"event: {event.event_type}\n"
+                yield f"data: {json.dumps(payload)}\n\n"
+            task = db.get(AgentTask, task_id)
+            if task is None or task.status in {
+                AgentTaskStatus.AWAITING_REVIEW.value,
+                AgentTaskStatus.CANCELLED.value,
+                AgentTaskStatus.COMPLETED.value,
+                AgentTaskStatus.FAILED.value,
+            }:
+                yield "event: end\ndata: {}\n\n"
+                break
+            sleep(0.25)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

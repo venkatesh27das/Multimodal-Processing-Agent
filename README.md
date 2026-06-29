@@ -10,7 +10,7 @@ The project is intentionally split between deterministic enterprise controls and
 - File profiling with modality, file type, text/scanned signals, and recommended strategy.
 - Parser registry with local parsers and placeholder managed/media adapters.
 - Parser selection, planning, synchronous execution, fallback handling, quality evaluation, and asset publishing.
-- Google ADK-backed A2A-style Multimodal Parser Agent API with Agent Card, task lifecycle, messages, artifacts, events, reasoning trace, quality judgement, and lineage for the current synchronous flow.
+- Google ADK-backed A2A-style Multimodal Parser Agent API with Agent Card, background task execution, messages, artifacts, SSE/pollable events, reasoning trace, quality judgement, cancellation, and lineage.
 - Skills registry backed by folder-based skill packs in `backend/app/skills`.
 - Observability, audit, dashboard, jobs, parser, skill, review, and asset APIs.
 - Next.js enterprise console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
@@ -18,7 +18,7 @@ The project is intentionally split between deterministic enterprise controls and
 
 ## Current Limitations
 
-- Parsing runs synchronously; no queue worker is included yet.
+- Agent parsing runs in an in-process FastAPI background task; a production queue worker is not included yet.
 - Azure Document Intelligence, speech, and video adapters are placeholders.
 - Legacy `.doc` files are not parsed directly; convert them to DOCX or PDF.
 - OCR quality depends on the local Tesseract binary and image quality.
@@ -238,6 +238,8 @@ curl -X POST http://localhost:8000/api/v1/agent/tasks \
 The parser agent uses Google ADK internally. FastAPI remains the public API boundary,
 and SQLAlchemy remains the durable system of record for task state, artifacts,
 quality, audit, and lineage.
+The local runtime uses an in-process background worker; deploy a real queue for
+multi-instance production workloads.
 
 Task events are available both as JSON and as an SSE-compatible stream:
 

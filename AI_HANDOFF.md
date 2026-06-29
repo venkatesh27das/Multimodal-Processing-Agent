@@ -10,7 +10,7 @@ The repo contains a working local MVP for an enterprise multimodal parsing agent
 - Next.js frontend with compact enterprise UI aligned to supplied wireframes.
 - Local parsers for HTML, DOCX, native-text PDF, image OCR, and optional LM Studio VLM.
 - Parser registry, skills registry, parsing plan, synchronous job execution, quality evaluation, fallback, asset publishing, audit, and observability.
-- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed runtime around the existing synchronous parser orchestration path, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed workflow runtime, runs parser-agent work in an in-process FastAPI background task, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Home, Jobs, Job Detail, Parsers, and Skills screens have been moved away from mock-only presentation toward backend-backed data.
 
 ## Recent UI/Backend Alignment Work
@@ -124,8 +124,9 @@ make verify-web
 
 ## Known Gaps
 
-- The core Multimodal Parser Agent now has a first backend API, Google ADK runtime adapter, direct upload-to-agent endpoint, and persistence slice, but it still executes synchronously.
-- Agent event streaming has an SSE-compatible endpoint over persisted task events; true live worker-driven streaming is still pending.
+- The core Multimodal Parser Agent now has a first backend API, Google ADK workflow adapter, direct upload-to-agent endpoint, background execution, SSE-compatible event streaming, durable cancellation before/between major phases, and persistence slice.
+- Background execution is currently in-process via FastAPI `BackgroundTasks`; a production queue/worker remains pending for multi-instance deployments and crash recovery.
+- Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
 - The canonical agent trace is persisted for the synchronous flow, but existing UI screens still mostly read legacy job endpoints instead of the agent task trace.
 - MCP/tool gateway records currently model parser adapters and ADK function tools as internal tool calls; a generalized MCP gateway abstraction is still pending.
 - Global search in the app shell is still mostly visual.
@@ -143,13 +144,12 @@ Priority 1 is to turn the current orchestration platform into a single public **
 
 ### Priority 1: A2A Multimodal Parser Agent
 
-1. Extend the first-class `MultimodalParserAgent` service beyond the synchronous file-id flow into async/background execution.
-2. Replace pollable task events with real event streaming once lifecycle persistence is stable.
-3. Make existing REST screens read from or delegate to the core agent task model where possible.
-4. Connect Home and Parse upload flows to `POST /api/v1/agent/tasks`.
-5. Add generalized MCP/tool gateway records beyond parser-adapter tool-call traces.
-6. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
-7. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
+1. Replace the in-process background worker with a durable queue/worker for production.
+2. Make existing REST screens read from or delegate to the core agent task model where possible.
+3. Connect Home and Parse upload flows to `POST /api/v1/agent/tasks/upload`.
+4. Add generalized MCP/tool gateway records beyond parser-adapter tool-call traces.
+5. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
+6. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
 
 ### Priority 2: Internal Capabilities Behind The Agent
 

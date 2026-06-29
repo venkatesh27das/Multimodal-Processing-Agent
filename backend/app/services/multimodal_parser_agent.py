@@ -9,8 +9,11 @@ from backend.app.domain.enums import (
     AgentMessageRole,
     AgentStepKind,
     AgentTaskStatus,
+    CostProfile,
     JobStatus,
+    LatencyProfile,
     QualityStatus,
+    QualityTarget,
 )
 from backend.app.models.domain import (
     AgentArtifact,
@@ -92,7 +95,11 @@ class MultimodalParserAgent:
                 "table_normalization",
                 "policy_checks",
             ],
-            streaming={"supported": True, "transport": "pollable_events"},
+            streaming={
+                "supported": True,
+                "transport": "pollable_events_and_sse",
+                "execution": "in_process_background_task",
+            },
             auth={
                 "mode": "local",
                 "future_modes": ["api_key", "oauth2", "tenant_policy"],
@@ -157,22 +164,54 @@ class MultimodalParserAgent:
             {"lifecycle": "observe_plan_act_evaluate_repair_publish"},
         )
         task.status = AgentTaskStatus.ACCEPTED.value
-        db.flush()
+        task.summary = "Parser-agent task accepted and queued for background execution."
+        db.commit()
+        db.refresh(task)
+        return task
 
+    def execute_task(self, db: Session, task_id: str) -> AgentTask:
+        task = db.get(AgentTask, task_id)
+        if task is None:
+            raise LookupError("Agent task not found")
+        if task.status == AgentTaskStatus.CANCELLED.value:
+            return task
+        if task.file_id is None:
+            raise ValueError("Agent task has no file_id")
+
+        file_record = db.get(FileRecord, task.file_id)
+        if file_record is None:
+            raise LookupError("File not found")
+        file_profile = (
+            db.query(FileProfile).filter(FileProfile.file_id == task.file_id).one_or_none()
+        )
+        if file_profile is None:
+            raise LookupError("File profile not found")
+
+        request = ParserSelectionRequest(
+            file_id=task.file_id,
+            requested_output_contract=task.requested_output_contract,
+            quality_target=QualityTarget(task.quality_target),
+            cost_profile=CostProfile(task.cost_profile),
+            latency_profile=LatencyProfile(task.latency_profile),
+            governance_constraints=task.governance_constraints,
+        )
         try:
-            request = ParserSelectionRequest(
-                file_id=file_id,
-                requested_output_contract=payload.requested_output_contract,
-                quality_target=payload.quality_target,
-                cost_profile=payload.cost_profile,
-                latency_profile=payload.latency_profile,
-                governance_constraints=payload.governance_constraints,
+            self._record_runtime_event(
+                db,
+                task,
+                {
+                    "step": "accepted",
+                    "summary": "Background ADK worker started this parser-agent task.",
+                    "tool": "background_worker",
+                },
             )
             run_result = multimodal_parser_adk_runtime.run(
                 db,
                 file_record=file_record,
                 file_profile=file_profile,
                 request=request,
+                emit_event=lambda event: self._record_runtime_event(db, task, event),
+                should_cancel=lambda: self._is_cancelled(db, task),
             )
             job = run_result.job
             plan = run_result.plan
@@ -198,6 +237,21 @@ class MultimodalParserAgent:
                 else AgentTaskStatus.COMPLETED.value
             )
             task.summary = self._task_summary(job.status, quality.quality_status, asset.id)
+            db.commit()
+        except RuntimeError as exc:
+            if "cancelled" not in str(exc).lower():
+                raise
+            task.status = AgentTaskStatus.CANCELLED.value
+            task.summary = "Parser-agent task was cancelled during background execution."
+            self._message(
+                db,
+                task.id,
+                self._next_message_sequence(db, task.id),
+                AgentMessageRole.AGENT.value,
+                "Task cancelled",
+                "The background ADK worker observed cancellation and stopped execution.",
+                {"error_type": exc.__class__.__name__},
+            )
             db.commit()
         except Exception as exc:
             task.status = AgentTaskStatus.FAILED.value
@@ -228,6 +282,48 @@ class MultimodalParserAgent:
 
         db.refresh(task)
         return task
+
+    def _record_runtime_event(
+        self,
+        db: Session,
+        task: AgentTask,
+        event: dict[str, object],
+    ) -> None:
+        step = str(event.get("step", "executing"))
+        task.status = self._status_for_runtime_step(step)
+        task.summary = str(event.get("summary", "Agent task is running."))
+        self._message(
+            db,
+            task.id,
+            self._next_message_sequence(db, task.id),
+            AgentMessageRole.AGENT.value,
+            f"ADK {step}",
+            task.summary,
+            event,
+        )
+        db.commit()
+        db.refresh(task)
+
+    def _status_for_runtime_step(self, step: str) -> str:
+        if step.startswith("observe"):
+            return AgentTaskStatus.OBSERVING.value
+        if step.startswith("plan"):
+            return AgentTaskStatus.PLANNING.value
+        if step.startswith("act"):
+            return AgentTaskStatus.EXECUTING.value
+        if step.startswith("evaluate"):
+            return AgentTaskStatus.EVALUATING.value
+        if step.startswith("repair"):
+            return AgentTaskStatus.REPAIRING.value
+        if step.startswith("publish"):
+            return AgentTaskStatus.PUBLISHING.value
+        if step.startswith("cancel"):
+            return AgentTaskStatus.CANCELLED.value
+        return AgentTaskStatus.EXECUTING.value
+
+    def _is_cancelled(self, db: Session, task: AgentTask) -> bool:
+        db.refresh(task)
+        return task.status == AgentTaskStatus.CANCELLED.value
 
     def cancel_task(self, db: Session, task: AgentTask) -> AgentTask:
         if task.status in {
