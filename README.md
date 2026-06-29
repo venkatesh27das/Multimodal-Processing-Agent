@@ -10,7 +10,8 @@ The project is intentionally split between deterministic enterprise controls and
 - File profiling with modality, file type, text/scanned signals, and recommended strategy.
 - Parser registry with local parsers and placeholder managed/media adapters.
 - Parser selection, planning, synchronous execution, fallback handling, quality evaluation, and asset publishing.
-- Google ADK-backed A2A-style Multimodal Parser Agent API with Agent Card, background task execution, messages, artifacts, SSE/pollable events, reasoning trace, quality judgement, cancellation, and lineage.
+- Google ADK-backed A2A-style Multimodal Parser Agent API with Agent Card, background task execution, multi-file tasks, upload/file/text/asset/URL-placeholder inputs, messages, artifacts, SSE/pollable events, reasoning trace, quality judgement, cancellation, and lineage.
+- Internal agent tool gateway metadata and ADK tools for parser planning, skill discovery, quality evaluation, publishing, and governance-aware tool policy.
 - Skills registry backed by folder-based skill packs in `backend/app/skills`.
 - Observability, audit, dashboard, jobs, parser, skill, review, and asset APIs.
 - Next.js enterprise console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
@@ -19,6 +20,7 @@ The project is intentionally split between deterministic enterprise controls and
 ## Current Limitations
 
 - Agent parsing runs in an in-process FastAPI background task; a production queue worker is not included yet.
+- URL agent input records a governed local placeholder; it does not fetch remote content in local mode.
 - Azure Document Intelligence, speech, and video adapters are placeholders.
 - Legacy `.doc` files are not parsed directly; convert them to DOCX or PDF.
 - OCR quality depends on the local Tesseract binary and image quality.
@@ -235,9 +237,30 @@ curl -X POST http://localhost:8000/api/v1/agent/tasks \
   }'
 ```
 
+Create a multi-file task, or materialize inline text as an agent input:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agent/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_ids": ["first-file-id", "second-file-id"],
+    "requested_output_contract": {"parsed_text": true}
+  }'
+
+curl -X POST http://localhost:8000/api/v1/agent/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text_payload": "Inline document text to parse",
+    "requested_output_contract": {"parsed_text": true}
+  }'
+```
+
 The parser agent uses Google ADK internally. FastAPI remains the public API boundary,
 and SQLAlchemy remains the durable system of record for task state, artifacts,
 quality, audit, and lineage.
+The ADK runtime exposes named internal phase agents, skill discovery, and a
+governed tool gateway metadata surface; parser execution remains deterministic
+and persisted behind the public agent task API.
 The local runtime uses an in-process background worker; deploy a real queue for
 multi-instance production workloads.
 

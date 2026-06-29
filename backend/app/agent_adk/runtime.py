@@ -25,6 +25,8 @@ from backend.app.services.execution_engine import execution_engine
 from backend.app.services.fallback_manager import fallback_manager
 from backend.app.services.parsing_planner import parsing_planner
 from backend.app.services.quality_evaluator import quality_evaluator
+from backend.app.services.skills_framework import skill_registry
+from backend.app.services.tool_gateway import tool_gateway
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,52 @@ def publish_asset_tool(file_id: str) -> dict[str, Any]:
     return {
         "file_id": file_id,
         "publishing": "Publish governed parsed assets with lineage and audit context.",
+    }
+
+
+def discover_skills_tool(file_type: str, document_goal: str | None = None) -> dict[str, Any]:
+    def supported_types(skill) -> list[str]:  # type: ignore[no-untyped-def]
+        return [document_type.value for document_type in skill.supported_document_types]
+
+    skills = [
+        {
+            "skill_id": skill.skill_id,
+            "name": skill.name,
+            "description": skill.description,
+            "version": "0.1.0",
+            "supported_document_types": supported_types(skill),
+            "extraction_schema": skill.schema,
+            "validation_rules": skill.validation_rules,
+        }
+        for skill in skill_registry.list_skills()
+        if (not skill.supported_document_types or file_type in supported_types(skill))
+    ]
+    return {
+        "file_type": file_type,
+        "document_goal": document_goal,
+        "skills": skills,
+        "selection_policy": (
+            "Planner may select a compatible enabled skill based on file profile, "
+            "output contract, and governance constraints."
+        ),
+    }
+
+
+def tool_gateway_policy_tool(external_services_allowed: bool = False) -> dict[str, Any]:
+    allowed_tools = tool_gateway.allowed_tools(external_services_allowed=external_services_allowed)
+    return {
+        "external_services_allowed": external_services_allowed,
+        "allowed_tools": [
+            {
+                "tool_id": tool.tool_id,
+                "category": tool.category,
+                "timeout_seconds": tool.timeout_seconds,
+                "retry_policy": tool.retry_policy,
+                "security_classification": tool.security_classification,
+                "external_service_allowed": tool.external_service_allowed,
+            }
+            for tool in allowed_tools
+        ],
     }
 
 
@@ -387,12 +435,12 @@ class MultimodalParserAdkRuntime:
             name="multimodal_parser_workflow",
             description="Observe, plan, act, evaluate, repair, and publish parser-agent workflow.",
             sub_agents=[
-                ParserPhaseAdkAgent(name="observe_phase", phase="observe"),
-                ParserPhaseAdkAgent(name="plan_phase", phase="plan"),
-                ParserPhaseAdkAgent(name="act_phase", phase="act"),
-                ParserPhaseAdkAgent(name="evaluate_phase", phase="evaluate"),
-                ParserPhaseAdkAgent(name="repair_phase", phase="repair"),
-                ParserPhaseAdkAgent(name="publish_phase", phase="publish"),
+                ParserPhaseAdkAgent(name="FileProfilerAgent", phase="observe"),
+                ParserPhaseAdkAgent(name="ParserStrategyAgent", phase="plan"),
+                ParserPhaseAdkAgent(name="ExtractionAgent", phase="act"),
+                ParserPhaseAdkAgent(name="QualityAgent", phase="evaluate"),
+                ParserPhaseAdkAgent(name="RepairAgent", phase="repair"),
+                ParserPhaseAdkAgent(name="PublisherAgent", phase="publish"),
             ],
         )
         self.tools = [
@@ -401,6 +449,8 @@ class MultimodalParserAdkRuntime:
             FunctionTool(execute_parser_plan_tool),
             FunctionTool(evaluate_quality_tool),
             FunctionTool(publish_asset_tool),
+            FunctionTool(discover_skills_tool),
+            FunctionTool(tool_gateway_policy_tool),
         ]
         self.agent = DeterministicMultimodalParserAdkAgent(
             name="multimodal_parser_agent",
@@ -422,6 +472,7 @@ class MultimodalParserAdkRuntime:
             "workflow_name": self.agent.workflow.name,
             "workflow_phases": [agent.name for agent in self.agent.workflow.sub_agents],
             "tools": [tool.name for tool in self.tools],
+            "tool_gateway": tool_gateway.metadata(),
             "execution_mode": "background_adk_workflow_adapter",
         }
 

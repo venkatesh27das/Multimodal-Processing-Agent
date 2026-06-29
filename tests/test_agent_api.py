@@ -30,12 +30,19 @@ def make_session():
     return db
 
 
-def add_html_file(db, tmp_path: Path) -> FileRecord:
-    storage_path = tmp_path / "agent.html"
-    storage_path.write_text("<html><body>Agentic parser task</body></html>")
+def add_html_file(
+    db,
+    tmp_path: Path,
+    *,
+    file_id: str = "agent-html",
+    filename: str = "agent.html",
+    content: str = "<html><body>Agentic parser task</body></html>",
+) -> FileRecord:
+    storage_path = tmp_path / filename
+    storage_path.write_text(content)
     file_record = FileRecord(
-        id="agent-html",
-        original_filename="agent.html",
+        id=file_id,
+        original_filename=filename,
         file_type=FileType.HTML.value,
         mime_type="text/html",
         size_bytes=storage_path.stat().st_size,
@@ -87,6 +94,8 @@ def test_agent_card_is_discoverable() -> None:
             payload = response.json()
             assert payload["name"] == "multimodal-parser-agent"
             assert payload["auth"]["runtime"]["framework"] == "google_adk"
+            assert "discover_skills_tool" in payload["auth"]["runtime"]["tools"]
+            assert payload["auth"]["runtime"]["tool_gateway"]
             assert "parser_selection" in payload["capabilities"]
             assert "google_adk_runtime" in payload["capabilities"]
             assert payload["endpoints"]["create_task"] == "/api/v1/agent/tasks"
@@ -211,6 +220,98 @@ def test_agent_task_can_be_created_directly_from_upload(tmp_path: Path) -> None:
             assert task["status"] == "completed"
             assert task["plan"]["selected_parser_id"] == "html_text"
             assert task["input_payload"]["file_id"] == task["file_id"]
+    finally:
+        settings.storage_dir = original_storage_dir
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_agent_task_processes_multiple_files(tmp_path: Path) -> None:
+    db = make_session()
+    first_file = add_html_file(
+        db,
+        tmp_path,
+        file_id="agent-html-1",
+        filename="agent-1.html",
+        content="<html><body>First agentic parser task</body></html>",
+    )
+    second_file = add_html_file(
+        db,
+        tmp_path,
+        file_id="agent-html-2",
+        filename="agent-2.html",
+        content="<html><body>Second agentic parser task</body></html>",
+    )
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/agent/tasks",
+                json={
+                    "file_ids": [first_file.id, second_file.id],
+                    "requested_output_contract": {"kind": "multi-agent-test"},
+                },
+            )
+            assert response.status_code == 202
+            task_id = response.json()["task"]["id"]
+
+            task = wait_for_terminal_task(client, task_id)
+            assert task["status"] == "completed"
+            assert task["file_id"] == first_file.id
+            assert task["input_payload"]["materialized_file_ids"] == [
+                first_file.id,
+                second_file.id,
+            ]
+            assert len(task["input_payload"]["job_ids"]) == 2
+            assert len(task["input_payload"]["asset_ids"]) == 2
+            parser_outputs = [
+                artifact for artifact in task["artifacts"] if artifact["kind"] == "parser_output"
+            ]
+            assert len(parser_outputs) == 2
+            file_sequences = {
+                message["payload"].get("file_sequence")
+                for message in task["messages"]
+                if message["title"] == "ADK publish"
+            }
+            assert file_sequences == {1, 2}
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_agent_task_accepts_text_payload(tmp_path: Path) -> None:
+    db = make_session()
+    original_storage_dir = settings.storage_dir
+    settings.storage_dir = tmp_path / "materialized-inputs"
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/agent/tasks",
+                json={
+                    "text_payload": "Invoice INV-123 from Example Corp for $42.00",
+                    "requested_output_contract": {"kind": "text-agent-test"},
+                    "title": "Parse inline text",
+                },
+            )
+            assert response.status_code == 202
+            task = wait_for_terminal_task(client, response.json()["task"]["id"])
+            assert task["status"] == "completed"
+            assert task["file_id"]
+            assert task["input_payload"]["text_payload"].startswith("Invoice INV-123")
+            assert task["input_payload"]["materialized_file_ids"] == [task["file_id"]]
+            profile_artifact = [
+                artifact for artifact in task["artifacts"] if artifact["kind"] == "file_profile"
+            ][0]
+            assert profile_artifact["payload"]["file"]["source"] == "agent-text"
     finally:
         settings.storage_dir = original_storage_dir
         app.dependency_overrides.pop(get_db, None)

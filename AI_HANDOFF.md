@@ -10,7 +10,8 @@ The repo contains a working local MVP for an enterprise multimodal parsing agent
 - Next.js frontend with compact enterprise UI aligned to supplied wireframes.
 - Local parsers for HTML, DOCX, native-text PDF, image OCR, and optional LM Studio VLM.
 - Parser registry, skills registry, parsing plan, synchronous job execution, quality evaluation, fallback, asset publishing, audit, and observability.
-- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed workflow runtime, runs parser-agent work in an in-process FastAPI background task, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- A first backend slice of the A2A-style Multimodal Parser Agent API is now available. It exposes an Agent Card, creates parser-agent tasks, uses a Google ADK-backed workflow runtime, runs parser-agent work in an in-process FastAPI background task, supports multi-file/file/text/asset/URL-placeholder inputs, and persists an agent trace with messages, artifacts, plan, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
+- The ADK runtime now exposes named internal phase agents, planner-facing skill discovery, and a governed internal tool gateway metadata surface for parser selection, parsing, skill selection, quality evaluation, and asset publishing.
 - Home, Jobs, Job Detail, Parsers, and Skills screens have been moved away from mock-only presentation toward backend-backed data.
 
 ## Recent UI/Backend Alignment Work
@@ -56,6 +57,7 @@ curl http://localhost:8000/.well-known/agent-card.json
 curl http://localhost:8000/api/v1/agent/card
 curl http://localhost:8000/api/v1/agent/tasks
 curl -F "file=@sample_files/invoice.html;type=text/html" http://localhost:8000/api/v1/agent/tasks/upload
+curl -X POST http://localhost:8000/api/v1/agent/tasks -H "Content-Type: application/json" -d '{"text_payload":"Inline document text","requested_output_contract":{"parsed_text":true}}'
 ```
 
 Agent task routes:
@@ -124,11 +126,12 @@ make verify-web
 
 ## Known Gaps
 
-- The core Multimodal Parser Agent now has a first backend API, Google ADK workflow adapter, direct upload-to-agent endpoint, background execution, SSE-compatible event streaming, durable cancellation before/between major phases, and persistence slice.
+- The core Multimodal Parser Agent now has a first backend API, Google ADK workflow adapter, direct upload-to-agent endpoint, multi-file task execution, text payload materialization, asset-reference materialization, URL-placeholder materialization, background execution, SSE-compatible event streaming, durable cancellation before/between major phases, and persistence slice.
 - Background execution is currently in-process via FastAPI `BackgroundTasks`; a production queue/worker remains pending for multi-instance deployments and crash recovery.
+- URL input is a local governed placeholder only; remote URL fetching is intentionally not implemented in this local mode.
 - Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
 - The canonical agent trace is persisted for the synchronous flow, but existing UI screens still mostly read legacy job endpoints instead of the agent task trace.
-- MCP/tool gateway records currently model parser adapters and ADK function tools as internal tool calls; a generalized MCP gateway abstraction is still pending.
+- MCP/tool gateway support currently exposes local capability metadata and governance policy filtering; real external MCP service execution is still pending.
 - Global search in the app shell is still mostly visual.
 - Home drag/drop does not yet upload directly into a parse workflow.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
@@ -147,15 +150,15 @@ Priority 1 is to turn the current orchestration platform into a single public **
 1. Replace the in-process background worker with a durable queue/worker for production.
 2. Make existing REST screens read from or delegate to the core agent task model where possible.
 3. Connect Home and Parse upload flows to `POST /api/v1/agent/tasks/upload`.
-4. Add generalized MCP/tool gateway records beyond parser-adapter tool-call traces.
+4. Persist explicit MCP/tool gateway planning records for non-parser tools when they are selected.
 5. Expand policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
 6. Add UI panels for Agent Plan, Agent Timeline, Agent Reasoning, Artifacts, Quality, and Lineage.
 
 ### Priority 2: Internal Capabilities Behind The Agent
 
-1. Define an internal subagent registry for focused capabilities such as File Profiler, Parser Strategy, Extraction, Quality, Repair, Review, and Publisher.
-2. Define an MCP/tool gateway so the core parser agent can call OCR, VLM, document intelligence, vector search, policy, or external parsing tools through a consistent interface.
-3. Make skills first-class planner-selectable capabilities with declared inputs, outputs, supported document types, confidence behavior, and validation rules.
+1. Define a persisted internal subagent registry beyond the current ADK phase-agent metadata.
+2. Connect the MCP/tool gateway to real OCR, VLM, document intelligence, vector search, policy, or external parsing tools through a consistent execution interface.
+3. Expand skills into richer planner-selectable capabilities with declared confidence behavior, cost/latency expectations, and compatibility metadata.
 4. Add policy controls around which tools, MCPs, subagents, and external services the agent may use per task.
 
 ### Priority 3: Agentic UI

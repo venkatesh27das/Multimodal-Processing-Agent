@@ -1,4 +1,8 @@
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
+from html import escape
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +14,7 @@ from backend.app.domain.enums import (
     AgentStepKind,
     AgentTaskStatus,
     CostProfile,
+    FileType,
     JobStatus,
     LatencyProfile,
     QualityStatus,
@@ -39,6 +44,7 @@ from backend.app.models.domain import (
 )
 from backend.app.schemas.agent import AgentCard, AgentEndpointMap, AgentTaskCreate, AgentTaskDetail
 from backend.app.schemas.domain import ParserSelectionRequest
+from backend.app.services.file_profiling import file_profiler
 
 
 class MultimodalParserAgent:
@@ -119,20 +125,22 @@ class MultimodalParserAgent:
         )
 
     def create_task(self, db: Session, payload: AgentTaskCreate) -> AgentTask:
-        file_id = payload.file_id or (payload.file_ids[0] if payload.file_ids else None)
-        if file_id is None:
-            raise ValueError("The current local agent task path requires file_id or file_ids.")
+        file_records = self._materialize_input_files(db, payload)
+        if not file_records:
+            raise ValueError(
+                "Agent task requires file_id, file_ids, text_payload, asset_id, or url."
+            )
 
-        file_record = db.get(FileRecord, file_id)
-        if file_record is None:
-            raise LookupError("File not found")
-        file_profile = db.query(FileProfile).filter(FileProfile.file_id == file_id).one_or_none()
-        if file_profile is None:
-            raise LookupError("File profile not found")
+        file_id = file_records[0].id
+        input_payload = {
+            **payload.model_dump(mode="json"),
+            "materialized_file_ids": [file_record.id for file_record in file_records],
+            "input_count": len(file_records),
+        }
 
         task = AgentTask(
             status=AgentTaskStatus.SUBMITTED.value,
-            title=payload.title or f"Parse {file_record.original_filename}",
+            title=payload.title or self._task_title(file_records),
             summary="Parser-agent task submitted.",
             file_id=file_id,
             requested_output_contract=payload.requested_output_contract,
@@ -140,7 +148,7 @@ class MultimodalParserAgent:
             quality_target=payload.quality_target.value,
             cost_profile=payload.cost_profile.value,
             latency_profile=payload.latency_profile.value,
-            input_payload=payload.model_dump(mode="json"),
+            input_payload=input_payload,
         )
         db.add(task)
         db.flush()
@@ -151,8 +159,8 @@ class MultimodalParserAgent:
             1,
             AgentMessageRole.USER.value,
             "Task request",
-            "Transform the supplied file into trusted structured assets.",
-            payload.model_dump(mode="json"),
+            "Transform the supplied input into trusted structured assets.",
+            input_payload,
         )
         self._message(
             db,
@@ -175,26 +183,10 @@ class MultimodalParserAgent:
             raise LookupError("Agent task not found")
         if task.status == AgentTaskStatus.CANCELLED.value:
             return task
-        if task.file_id is None:
-            raise ValueError("Agent task has no file_id")
+        file_ids = self._task_file_ids(task)
+        if not file_ids:
+            raise ValueError("Agent task has no materialized input files")
 
-        file_record = db.get(FileRecord, task.file_id)
-        if file_record is None:
-            raise LookupError("File not found")
-        file_profile = (
-            db.query(FileProfile).filter(FileProfile.file_id == task.file_id).one_or_none()
-        )
-        if file_profile is None:
-            raise LookupError("File profile not found")
-
-        request = ParserSelectionRequest(
-            file_id=task.file_id,
-            requested_output_contract=task.requested_output_contract,
-            quality_target=QualityTarget(task.quality_target),
-            cost_profile=CostProfile(task.cost_profile),
-            latency_profile=LatencyProfile(task.latency_profile),
-            governance_constraints=task.governance_constraints,
-        )
         try:
             self._record_runtime_event(
                 db,
@@ -203,40 +195,88 @@ class MultimodalParserAgent:
                     "step": "accepted",
                     "summary": "Background ADK worker started this parser-agent task.",
                     "tool": "background_worker",
+                    "file_ids": file_ids,
                 },
             )
-            run_result = multimodal_parser_adk_runtime.run(
-                db,
-                file_record=file_record,
-                file_profile=file_profile,
-                request=request,
-                emit_event=lambda event: self._record_runtime_event(db, task, event),
-                should_cancel=lambda: self._is_cancelled(db, task),
-            )
-            job = run_result.job
-            plan = run_result.plan
-            quality = run_result.quality
-            asset = run_result.asset
-            review_item = run_result.review_item
-            self._persist_trace(
-                db,
-                task=task,
-                file_record=file_record,
-                file_profile=file_profile,
-                job_id=job.id,
-                plan=plan,
-                quality=quality,
-                asset=asset,
-                review_item=review_item,
-                adk_events=run_result.events,
-            )
-            task.job_id = job.id
+            job_ids: list[str] = []
+            asset_ids: list[str] = []
+            review_required = False
+            for index, file_id in enumerate(file_ids, start=1):
+                if self._is_cancelled(db, task):
+                    raise RuntimeError("Agent task was cancelled")
+                file_record, file_profile = self._load_profiled_file(db, file_id)
+                file_sequence = index
+                current_file_id = file_id
+
+                def make_emit_file_event(
+                    bound_file_sequence: int,
+                    bound_file_id: str,
+                ):
+                    def emit_file_event(event: dict[str, object]) -> None:
+                        self._record_runtime_event(
+                            db,
+                            task,
+                            {
+                                **event,
+                                "file_sequence": bound_file_sequence,
+                                "file_id": bound_file_id,
+                                "input_count": len(file_ids),
+                            },
+                        )
+
+                    return emit_file_event
+
+                request = ParserSelectionRequest(
+                    file_id=file_id,
+                    requested_output_contract=task.requested_output_contract,
+                    quality_target=QualityTarget(task.quality_target),
+                    cost_profile=CostProfile(task.cost_profile),
+                    latency_profile=LatencyProfile(task.latency_profile),
+                    governance_constraints=task.governance_constraints,
+                )
+                run_result = multimodal_parser_adk_runtime.run(
+                    db,
+                    file_record=file_record,
+                    file_profile=file_profile,
+                    request=request,
+                    emit_event=make_emit_file_event(file_sequence, current_file_id),
+                    should_cancel=lambda: self._is_cancelled(db, task),
+                )
+                job = run_result.job
+                plan = run_result.plan
+                quality = run_result.quality
+                asset = run_result.asset
+                review_item = run_result.review_item
+                self._persist_trace(
+                    db,
+                    task=task,
+                    file_record=file_record,
+                    file_profile=file_profile,
+                    job_id=job.id,
+                    plan=plan,
+                    quality=quality,
+                    asset=asset,
+                    review_item=review_item,
+                    adk_events=run_result.events,
+                    file_sequence=index,
+                )
+                job_ids.append(job.id)
+                asset_ids.append(asset.id)
+                review_required = review_required or job.status == JobStatus.REVIEW_REQUIRED.value
+
+            task.job_id = job_ids[0] if job_ids else None
             task.status = (
                 AgentTaskStatus.AWAITING_REVIEW.value
-                if job.status == JobStatus.REVIEW_REQUIRED.value
+                if review_required
                 else AgentTaskStatus.COMPLETED.value
             )
-            task.summary = self._task_summary(job.status, quality.quality_status, asset.id)
+            task.input_payload = {
+                **task.input_payload,
+                "processed_file_ids": file_ids,
+                "job_ids": job_ids,
+                "asset_ids": asset_ids,
+            }
+            task.summary = self._multi_task_summary(asset_ids, review_required)
             db.commit()
         except RuntimeError as exc:
             if "cancelled" not in str(exc).lower():
@@ -354,7 +394,10 @@ class MultimodalParserAgent:
                 **task.__dict__,
                 "messages": self._messages(db, task.id),
                 "artifacts": self._artifacts(db, task.id),
-                "plan": db.query(AgentPlan).filter(AgentPlan.task_id == task.id).one_or_none(),
+                "plan": db.query(AgentPlan)
+                .filter(AgentPlan.task_id == task.id)
+                .order_by(AgentPlan.created_at.asc())
+                .first(),
                 "steps": self._steps(db, task.id),
                 "decisions": self._decisions(db, task.id),
                 "tool_calls": self._tool_calls(db, task.id),
@@ -362,12 +405,150 @@ class MultimodalParserAgent:
                 "subtasks": self._subtasks(db, task.id),
                 "quality_judgement": db.query(AgentQualityJudgement)
                 .filter(AgentQualityJudgement.task_id == task.id)
-                .one_or_none(),
+                .order_by(AgentQualityJudgement.created_at.asc())
+                .first(),
                 "lineage": db.query(AgentLineage)
                 .filter(AgentLineage.task_id == task.id)
-                .one_or_none(),
+                .order_by(AgentLineage.created_at.asc())
+                .first(),
             }
         )
+
+    def _materialize_input_files(
+        self,
+        db: Session,
+        payload: AgentTaskCreate,
+    ) -> list[FileRecord]:
+        file_records: list[FileRecord] = []
+        seen_file_ids: set[str] = set()
+        for file_id in [payload.file_id, *payload.file_ids]:
+            if not file_id or file_id in seen_file_ids:
+                continue
+            file_record, _ = self._load_profiled_file(db, file_id)
+            file_records.append(file_record)
+            seen_file_ids.add(file_id)
+
+        if payload.asset_id:
+            file_records.append(self._materialize_asset_reference(db, payload.asset_id))
+        if payload.url:
+            file_records.append(self._materialize_url_placeholder(db, payload.url))
+        if payload.text_payload:
+            file_records.append(self._materialize_text_payload(db, payload.text_payload))
+        return file_records
+
+    def _load_profiled_file(self, db: Session, file_id: str) -> tuple[FileRecord, FileProfile]:
+        file_record = db.get(FileRecord, file_id)
+        if file_record is None:
+            raise LookupError("File not found")
+        file_profile = db.query(FileProfile).filter(FileProfile.file_id == file_id).one_or_none()
+        if file_profile is None:
+            raise LookupError("File profile not found")
+        return file_record, file_profile
+
+    def _materialize_text_payload(self, db: Session, text_payload: str) -> FileRecord:
+        html = self._html_document(
+            "Text payload",
+            f"<pre>{escape(text_payload)}</pre>",
+            {"input_mode": "text_payload"},
+        )
+        return self._create_synthetic_html_file(
+            db,
+            original_filename="agent-text-payload.html",
+            source="agent-text",
+            html=html,
+        )
+
+    def _materialize_url_placeholder(self, db: Session, url: str) -> FileRecord:
+        html = self._html_document(
+            "URL placeholder",
+            (
+                f"<p>Referenced URL: <a href=\"{escape(url)}\">{escape(url)}</a></p>"
+                "<p>This local runtime records URL intent without fetching remote content.</p>"
+            ),
+            {"input_mode": "url_placeholder", "url": url},
+        )
+        return self._create_synthetic_html_file(
+            db,
+            original_filename="agent-url-placeholder.html",
+            source="agent-url",
+            html=html,
+        )
+
+    def _materialize_asset_reference(self, db: Session, asset_id: str) -> FileRecord:
+        asset = db.get(ParsedAsset, asset_id)
+        if asset is None:
+            raise LookupError("Asset not found")
+        text = asset.parsed_text or json.dumps(asset.structured_data, indent=2, sort_keys=True)
+        html = self._html_document(
+            "Parsed asset reference",
+            (
+                f"<p>Referenced parsed asset: {escape(asset.id)}</p>"
+                f"<pre>{escape(text or '')}</pre>"
+            ),
+            {"input_mode": "asset_id", "asset_id": asset.id, "source_file_id": asset.file_id},
+        )
+        return self._create_synthetic_html_file(
+            db,
+            original_filename=f"asset-{asset.id}.html",
+            source="agent-asset",
+            html=html,
+        )
+
+    def _create_synthetic_html_file(
+        self,
+        db: Session,
+        *,
+        original_filename: str,
+        source: str,
+        html: str,
+    ) -> FileRecord:
+        settings.storage_dir.mkdir(parents=True, exist_ok=True)
+        content = html.encode("utf-8")
+        storage_path = settings.storage_dir / f"{uuid4()}.html"
+        storage_path.write_bytes(content)
+        file_record = FileRecord(
+            original_filename=original_filename,
+            file_type=FileType.HTML.value,
+            mime_type="text/html",
+            size_bytes=len(content),
+            checksum_sha256=sha256(content).hexdigest(),
+            source=source,
+            storage_path=str(storage_path),
+            status=JobStatus.REGISTERED.value,
+            created_by="agent",
+        )
+        db.add(file_record)
+        db.flush()
+        db.add(file_profiler.profile(file_record))
+        db.flush()
+        return file_record
+
+    def _html_document(
+        self,
+        title: str,
+        body: str,
+        metadata: dict[str, object],
+    ) -> str:
+        return (
+            "<!doctype html><html><head>"
+            f"<meta charset=\"utf-8\"><title>{escape(title)}</title>"
+            f"<script type=\"application/json\" id=\"agent-input-metadata\">"
+            f"{escape(json.dumps(metadata, sort_keys=True))}</script>"
+            "</head><body>"
+            f"<h1>{escape(title)}</h1>{body}"
+            "</body></html>"
+        )
+
+    def _task_file_ids(self, task: AgentTask) -> list[str]:
+        materialized = task.input_payload.get("materialized_file_ids", [])
+        if isinstance(materialized, list):
+            return [str(file_id) for file_id in materialized if file_id]
+        return [task.file_id] if task.file_id else []
+
+    def _task_title(self, file_records: list[FileRecord]) -> str:
+        if len(file_records) == 1:
+            return f"Parse {file_records[0].original_filename}"
+        return f"Parse {len(file_records)} inputs"
 
     def _persist_trace(
         self,
@@ -382,7 +563,9 @@ class MultimodalParserAgent:
         asset: ParsedAsset,
         review_item: ReviewItem | None,
         adk_events: list[dict[str, object]] | None = None,
+        file_sequence: int = 1,
     ) -> None:
+        sequence_base = (file_sequence - 1) * 100
         executions = (
             db.query(ParserExecutionResult)
             .filter(ParserExecutionResult.job_id == job_id)
@@ -394,7 +577,7 @@ class MultimodalParserAgent:
         self._subtask(
             db,
             task.id,
-            1,
+            sequence_base + 1,
             "FileProfilerAgent",
             "File profile observed",
             (
@@ -406,7 +589,7 @@ class MultimodalParserAgent:
         self._subtask(
             db,
             task.id,
-            2,
+            sequence_base + 2,
             "ParserStrategyAgent",
             "Parser strategy selected",
             plan.decision_reason,
@@ -417,7 +600,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.OBSERVE.value,
-            1,
+            sequence_base + 1,
             "completed",
             "Observe",
             "Profiled file signals, modalities, layout risk, and parsing constraints.",
@@ -427,7 +610,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.PLAN.value,
-            2,
+            sequence_base + 2,
             "completed",
             "Plan",
             plan.decision_reason,
@@ -437,7 +620,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.ACT.value,
-            3,
+            sequence_base + 3,
             "completed",
             "Act",
             f"Executed {len(executions)} parser adapter(s).",
@@ -447,7 +630,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.EVALUATE.value,
-            4,
+            sequence_base + 4,
             "completed",
             "Evaluate",
             quality.quality_explanation,
@@ -457,7 +640,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.REPAIR.value,
-            5,
+            sequence_base + 5,
             "completed" if fallback_used else "skipped",
             "Repair",
             "Fallback parser was used." if fallback_used else "No fallback was required.",
@@ -467,7 +650,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentStepKind.PUBLISH.value,
-            6,
+            sequence_base + 6,
             "completed",
             "Publish",
             f"Published parsed asset {asset.id}.",
@@ -483,7 +666,7 @@ class MultimodalParserAgent:
         self._subtask(
             db,
             task.id,
-            3,
+            sequence_base + 3,
             "QualityAgent",
             "Quality judged",
             quality.quality_explanation,
@@ -492,7 +675,7 @@ class MultimodalParserAgent:
         self._subtask(
             db,
             task.id,
-            4,
+            sequence_base + 4,
             "PublisherAgent",
             "Asset published",
             f"Created governed parsed asset {asset.id}.",
@@ -503,7 +686,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.FILE_PROFILE.value,
-            1,
+            sequence_base + 1,
             "File profile",
             "Observed file signals used by the agent planner.",
             self._file_profile_payload(file_record, file_profile),
@@ -512,12 +695,12 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.PARSING_PLAN.value,
-            2,
+            sequence_base + 2,
             "Parsing plan",
             plan.decision_reason,
             self._plan_payload(plan),
         )
-        for offset, execution in enumerate(executions, start=3):
+        for offset, execution in enumerate(executions, start=sequence_base + 3):
             self._artifact(
                 db,
                 task.id,
@@ -531,7 +714,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.QUALITY_REPORT.value,
-            10,
+            sequence_base + 10,
             "Quality report",
             quality.quality_explanation,
             self._quality_payload(quality),
@@ -541,18 +724,18 @@ class MultimodalParserAgent:
                 db,
                 task.id,
                 AgentArtifactKind.FALLBACK_REPORT.value,
-                11,
+                sequence_base + 11,
                 "Fallback report",
                 "Fallback or repair path was used during parsing.",
                 {"fallback_parser_id": plan.fallback_parser_id, "executions": len(executions)},
             )
-        self._skill_artifact(db, task.id, asset)
+        self._skill_artifact(db, task.id, asset, sequence=sequence_base + 12)
         if review_item is not None:
             self._artifact(
                 db,
                 task.id,
                 AgentArtifactKind.REVIEW_REQUEST.value,
-                13,
+                sequence_base + 13,
                 "Review request",
                 review_item.reason,
                 {
@@ -565,7 +748,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.PARSED_ASSET.value,
-            14,
+            sequence_base + 14,
             "Parsed asset",
             f"Published governed parsed asset {asset.id}.",
             self._asset_payload(asset),
@@ -574,7 +757,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.LINEAGE_REPORT.value,
-            15,
+            sequence_base + 15,
             "Lineage report",
             "Source file, parser, fallback, skill, quality, and asset lineage.",
             asset.lineage,
@@ -583,7 +766,7 @@ class MultimodalParserAgent:
             db,
             task.id,
             AgentArtifactKind.AGENT_REASONING.value,
-            16,
+            sequence_base + 16,
             "Agent reasoning",
             (
                 "Explainable summary of observed signals, parser choice, quality, "
@@ -591,6 +774,7 @@ class MultimodalParserAgent:
             ),
             {
                 "observed_file_signals": self._file_profile_payload(file_record, file_profile),
+                "file_sequence": file_sequence,
                 "agent_framework": multimodal_parser_adk_runtime.framework_metadata,
                 "adk_events": adk_events or [],
                 "selected_parser": plan.selected_parser_id,
@@ -603,13 +787,13 @@ class MultimodalParserAgent:
                 else "published",
             },
         )
-        self._audit_artifact(db, task.id, job_id)
-        self._adk_runtime_artifact(db, task.id, adk_events or [])
+        self._audit_artifact(db, task.id, job_id, sequence=sequence_base + 17)
+        self._adk_runtime_artifact(db, task.id, adk_events or [], sequence=sequence_base + 18)
 
         self._message(
             db,
             task.id,
-            3,
+            sequence_base + 3,
             AgentMessageRole.AGENT.value,
             "Task completed" if review_item is None else "Review requested",
             "Published parsed asset and recorded the full agent trace."
@@ -623,12 +807,14 @@ class MultimodalParserAgent:
         db: Session,
         task_id: str,
         adk_events: list[dict[str, object]],
+        *,
+        sequence: int,
     ) -> None:
         self._artifact(
             db,
             task_id,
             AgentArtifactKind.AGENT_REASONING.value,
-            18,
+            sequence,
             "Google ADK runtime trace",
             "ADK agent metadata and tool-level runtime events for this parser task.",
             {
@@ -792,7 +978,14 @@ class MultimodalParserAgent:
             )
         )
 
-    def _skill_artifact(self, db: Session, task_id: str, asset: ParsedAsset) -> None:
+    def _skill_artifact(
+        self,
+        db: Session,
+        task_id: str,
+        asset: ParsedAsset,
+        *,
+        sequence: int,
+    ) -> None:
         skill_output = self._skill_output(asset)
         if not skill_output:
             return
@@ -800,13 +993,20 @@ class MultimodalParserAgent:
             db,
             task_id,
             AgentArtifactKind.SKILL_OUTPUT.value,
-            12,
+            sequence,
             "Skill output",
             f"Skill {skill_output.get('skill_id')} produced structured output.",
             skill_output,
         )
 
-    def _audit_artifact(self, db: Session, task_id: str, job_id: str) -> None:
+    def _audit_artifact(
+        self,
+        db: Session,
+        task_id: str,
+        job_id: str,
+        *,
+        sequence: int,
+    ) -> None:
         audit_events = (
             db.query(AuditEvent)
             .filter(AuditEvent.entity_id == job_id)
@@ -817,7 +1017,7 @@ class MultimodalParserAgent:
             db,
             task_id,
             AgentArtifactKind.AUDIT_SUMMARY.value,
-            17,
+            sequence,
             "Audit summary",
             f"Captured {len(audit_events)} audit events for the task job.",
             {
@@ -940,6 +1140,7 @@ class MultimodalParserAgent:
                 "mime_type": file_record.mime_type,
                 "size_bytes": file_record.size_bytes,
                 "checksum_sha256": file_record.checksum_sha256,
+                "source": file_record.source,
             },
             "profile": {
                 "id": file_profile.id,
@@ -1023,6 +1224,18 @@ class MultimodalParserAgent:
         if quality_status == QualityStatus.REVIEW_REQUIRED.value:
             return f"Asset {asset_id} was published and routed to human review."
         return f"Asset {asset_id} was published with job status {job_status}."
+
+    def _multi_task_summary(self, asset_ids: list[str], review_required: bool) -> str:
+        if not asset_ids:
+            return "Parser-agent task finished without publishing an asset."
+        if len(asset_ids) == 1:
+            return (
+                f"Asset {asset_ids[0]} was published and routed to human review."
+                if review_required
+                else f"Asset {asset_ids[0]} was published."
+            )
+        review_note = " At least one output was routed to human review." if review_required else ""
+        return f"Published {len(asset_ids)} parsed assets.{review_note}"
 
     def _messages(self, db: Session, task_id: str) -> list[AgentMessage]:
         return (
