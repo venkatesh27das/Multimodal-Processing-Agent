@@ -79,6 +79,7 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Inspect per-task tool governance policy, allowed/blocked gateway tools, and planner-selectable skill metadata.
 - Use Parse and Job Detail trace panels for timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, and worker state.
+- Search across agent tasks, files, jobs, assets, parsers, skills, and review items from the app shell or `GET /api/v1/search`.
 - Use a Next.js console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
 
 ## Current Agent Capabilities
@@ -572,6 +573,7 @@ Important routes:
 | Jobs | `POST /jobs`, `POST /jobs/plan`, `GET /jobs`, `GET /jobs/{job_id}` |
 | Assets | `GET /assets/{asset_id}`, `GET /files/{file_id}/assets`, `GET /jobs/{job_id}/assets` |
 | Registries | `GET /parser-registry`, `GET /skills-registry` |
+| Search | `GET /search?q=...&limit=20` |
 | Observability | `GET /observability/summary`, `GET /audit/events` |
 | MCP Demo | `GET /mcp/tools` |
 
@@ -702,7 +704,7 @@ Use this table to understand what is production-like today and what is intention
 | Skills | Working MVP skill packs plus planner metadata in agent traces | Skill evaluation sets, deeper quality calibration, richer compatibility scoring. |
 | Review queue | Review items can be created and approve/reject decisions persist | Feedback into quality/training loops and reviewer assignment. |
 | Auth and tenancy | Not implemented | API keys/OAuth, RBAC, tenant isolation, audit actor identity. |
-| Global search | Planned | Indexed search across files, jobs, tasks, assets, skills, parsers, audit. |
+| Global search | Working DB-backed search | Add indexed search, highlighting, permissions, and audit-log coverage for production scale. |
 
 ## Deployment Notes
 
@@ -779,7 +781,7 @@ This is a strong local MVP, not a production deployment template yet.
 - PII and restricted document detection use lightweight heuristics.
 - SQLite schema creation is lightweight; production should use Alembic migrations.
 - Authentication, authorization, tenant isolation, and secrets management are not implemented.
-- Global search is still planned work.
+- Global search is DB-backed and scoped to core workspace records; production should add indexing, permissions, highlighting, and audit-log coverage.
 
 ## Roadmap
 
@@ -787,7 +789,7 @@ Near-term priorities:
 
 - Replace the DB-backed local queue with a production queue backend and dead-letter workflow.
 - Add dedicated full-page agent task details and artifact diff/inspection views.
-- Add global search across files, jobs, assets, parsers, skills, and agent tasks.
+- Add indexed search with highlighting, saved filters, permissions, and audit-log coverage.
 - Add production migrations, auth, tenant isolation, and policy packs.
 
 Capability expansion:

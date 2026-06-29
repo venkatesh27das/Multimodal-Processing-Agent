@@ -19,6 +19,7 @@ from backend.app.api.routes import (
     mcp,
     observability,
     parsers,
+    search,
     skills,
 )
 from backend.app.core.config import settings
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(observability.audit_router, prefix=settings.api_prefix, tags=["audit"])
     app.include_router(parsers.router, prefix=settings.api_prefix, tags=["parser-registry"])
     app.include_router(parsers.metrics_router, prefix=settings.api_prefix, tags=["parsers"])
+    app.include_router(search.router, prefix=settings.api_prefix, tags=["search"])
     app.include_router(skills.router, prefix=settings.api_prefix, tags=["skills-registry"])
 
     return app

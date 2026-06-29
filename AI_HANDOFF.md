@@ -133,7 +133,7 @@ make verify-web
 - Live streaming is backed by persisted task messages/events emitted by the worker; websocket streaming is not implemented.
 - Home upload and the Parse screen now create parser-agent tasks. Parse and Job Detail show richer Agent Trace panels with timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, worker state, and reasoning. Some legacy list views still read job endpoints.
 - MCP/tool gateway support currently exposes capability metadata, governance policy filtering, and persisted planning traces; real external MCP service execution is still pending.
-- Global search in the app shell is still mostly visual.
+- Global search now has a DB-backed `/api/v1/search` endpoint and an app-shell dropdown across agent tasks, files, jobs, assets, parsers, skills, and review items. Production search still needs indexing, permissions, highlighting, and audit-log coverage.
 - Quick templates are still shortcut-style UI; they are not a backend-authored template catalog.
 - Human review approve/reject decisions are persisted through `/api/v1/review/items/{id}/approve` and `/api/v1/review/items/{id}/reject`, with audit events and a backend-backed Review Queue page.
 - A DB-backed persisted agent worker is available through `make agent-worker` / `python -m backend.app.workers.agent_worker`. It supports claims, configurable attempts, retry backoff, heartbeat lock extension, and stale-lock recovery. Production still needs a dedicated queue backend, dead-letter handling, and operational dashboards before high-concurrency multi-instance deployment.
@@ -166,7 +166,7 @@ Priority 1 is to turn the current orchestration platform into a single public **
 2. Add richer artifact inspection for file profile, parsing plan, parsed asset, quality report, review request, and lineage report.
 3. Add parser alternative comparison and fallback rationale visualizations.
 4. Connect remaining shortcut/template flows to create real parser-agent tasks.
-5. Implement global search with a backend `/search` endpoint across files, jobs, assets, parsers, skills, and agent tasks.
+5. Expand global search with indexing, result highlighting, permissions, saved filters, and audit-log coverage.
 
 ### Priority 4: Operational Hardening
 
