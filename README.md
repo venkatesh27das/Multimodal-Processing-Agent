@@ -1,5 +1,12 @@
 # Multimodal Processing Agent
 
+[![FastAPI](https://img.shields.io/badge/FastAPI-Agent%20API-009688?logo=fastapi&logoColor=white)](#consume-it-as-an-agent-api)
+[![Next.js](https://img.shields.io/badge/Next.js-Operations%20Console-000000?logo=nextdotjs&logoColor=white)](#consume-it-as-a-web-app)
+[![Google ADK](https://img.shields.io/badge/Google%20ADK-Agent%20Runtime-4285F4?logo=google&logoColor=white)](#current-agent-capabilities)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](#quick-start)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)](#quick-start)
+[![Local First](https://img.shields.io/badge/Local%20First-SQLite%20%2B%20Filesystem-4B5563)](#deployment-notes)
+
 An enterprise-style multimodal parser agent for turning messy files into trusted, governed, structured assets.
 
 This repo is both:
@@ -8,6 +15,22 @@ This repo is both:
 - a **Next.js operations console** for uploading files, watching parser runs, reviewing uncertain output, browsing assets, and inspecting observability.
 
 The core idea is simple: external clients should not need to know which parser, OCR engine, skill, fallback, or review rule to call. They ask one agent to transform one or more multimodal inputs into structured assets with quality, lineage, and audit context.
+
+## At A Glance
+
+| Surface | What it is | Best for |
+| --- | --- | --- |
+| **Agent API** | A2A-style FastAPI boundary around one Multimodal Parser Agent. | Apps, services, and other agents that need governed parsing by API. |
+| **Operations Console** | Next.js UI for New Run, Run History, Outputs Review, Review Queue, Assets, and Observability. | Humans operating and inspecting parsing workflows. |
+| **Agent Runtime** | Google ADK-backed phase agents wrapped around deterministic parser orchestration. | Explainable observe-plan-act-evaluate-repair-publish traces. |
+| **Asset Publisher** | Governed `ParsedAsset` records with typed outputs, quality, lineage, and audit context. | Turning unstructured inputs into reusable structured assets. |
+
+```text
+Upload or reference data
+  -> ask one parser agent
+  -> agent profiles, plans, parses, evaluates, repairs, and publishes
+  -> consume trusted assets through API or UI
+```
 
 ```mermaid
 flowchart TD
@@ -38,6 +61,16 @@ flowchart TD
 | Add a skill | [Developer Contribution Guide](#developer-contribution-guide) | `backend/app/skills`, schema, validation rules, skill tests |
 | Understand what is real today | [Implementation Status](#implementation-status) | Current vs placeholder capabilities |
 | Debug setup | [Troubleshooting](#troubleshooting) | Port, env, OCR, frontend/API, SQLite/storage fixes |
+
+## What You Can Build With This
+
+| Use case | Entry point | Output |
+| --- | --- | --- |
+| Document extraction app | `POST /api/v1/agent/tasks/upload` | Parsed content, tables, entities, quality, lineage. |
+| Retrieval pipeline | New Run Search preset or `selected_asset_types` with `chunks` and `vectors` | Chunks, embeddings, evidence spans. |
+| Knowledge graph prep | Graph preset or `knowledge_graph_preparation` skill | Entities, relationships, graph nodes and edges. |
+| Human-in-the-loop review | Run quality policy plus Review Queue | Review requests, uncertain fields, audit events. |
+| Parser operations console | `make api` + `make web` | Run History, Outputs Review, Agent Trace, Observability. |
 
 ## Capability Status
 
@@ -213,6 +246,14 @@ The agent can publish a single governed `ParsedAsset` record that contains many 
 - `lineage`
 
 Objective presets add more assets when needed. For example, Search adds chunks, vectors, and evidence; Structured extraction adds entities and user-defined fields; Graph adds relationships and a knowledge graph.
+
+| New Run objective | Added assets | Typical consumer |
+| --- | --- | --- |
+| General | Minimal baseline only | Human inspection and simple extraction. |
+| Search | `chunks`, `vectors`, `evidence` | RAG, semantic search, retrieval indexing. |
+| Structured | `entities`, `evidence`, `user_defined_extraction` | Business workflows and schema-driven extraction. |
+| Graph | `entities`, `relationships`, `knowledge_graph`, `evidence` | Knowledge graph and relationship analysis. |
+| Transcript | `chunks`, `summary`, `entities`, `evidence` | Audio/video review and meeting intelligence. |
 
 | Asset kind | What it contains | Current generation behavior | Where to view |
 | --- | --- | --- | --- |
