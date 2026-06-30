@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     lm_studio_enabled: bool = False
     lm_studio_base_url: str = "http://localhost:1234/v1"
     lm_studio_vlm_model: str = "google/gemma-4-12b"
-    lm_studio_timeout_seconds: float = 60.0
+    lm_studio_timeout_seconds: float = 180.0
     lm_studio_max_pdf_pages: int = 3
     lm_studio_embedding_enabled: bool = False
     lm_studio_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"

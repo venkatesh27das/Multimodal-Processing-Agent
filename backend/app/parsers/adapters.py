@@ -221,9 +221,11 @@ class MockVlmParser(BaseParser):
                 else None
             )
             parsed_text = parsed_text if isinstance(parsed_text, str) else None
+            tables = self._markdown_tables(parsed_text)
             return ParseResult(
                 parser_id=self.parser_id,
                 parsed_text=parsed_text,
+                tables=tables,
                 image_descriptions=[
                     {
                         "image_id": f"vlm-input-{index}",
@@ -236,6 +238,7 @@ class MockVlmParser(BaseParser):
                     "file_id": request.file_id,
                     "model": settings.lm_studio_vlm_model,
                     "image_count": len(image_payloads),
+                    "table_count": len(tables),
                 },
                 confidence_score=0.76 if parsed_text else 0.3,
                 warnings=image_warnings + ([] if parsed_text else ["LM Studio returned no text."]),
@@ -288,6 +291,49 @@ class MockVlmParser(BaseParser):
     def _image_url_payload(self, path: Path) -> dict[str, object]:
         mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
         return self._data_url_payload(path.read_bytes(), mime_type)
+
+    def _markdown_tables(self, text: str | None) -> list[dict[str, object]]:
+        if not text:
+            return []
+
+        tables: list[dict[str, object]] = []
+        current: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
+                current.append(stripped)
+                continue
+            if current:
+                self._append_markdown_table(tables, current)
+                current = []
+        if current:
+            self._append_markdown_table(tables, current)
+        return tables
+
+    def _append_markdown_table(
+        self,
+        tables: list[dict[str, object]],
+        lines: list[str],
+    ) -> None:
+        rows: list[list[str]] = []
+        for line in lines:
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if not cells or self._is_markdown_separator(cells):
+                continue
+            rows.append(cells)
+        if len(rows) < 2:
+            return
+        tables.append(
+            {
+                "table_id": f"vlm-table-{len(tables)}",
+                "rows": rows,
+                "source": "lm_studio_vlm_markdown",
+                "confidence": 0.7,
+            }
+        )
+
+    def _is_markdown_separator(self, cells: list[str]) -> bool:
+        return all(cell and set(cell) <= {"-", ":"} for cell in cells)
 
     def _data_url_payload(self, data: bytes, mime_type: str) -> dict[str, object]:
         encoded = base64.b64encode(data).decode("ascii")

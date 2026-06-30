@@ -104,7 +104,20 @@ def test_lm_studio_vlm_parser_calls_openai_compatible_endpoint(
             return None
 
         def json(self) -> dict[str, object]:
-            return {"choices": [{"message": {"content": "Invoice text from Gemma"}}]}
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "Invoice text from Gemma\n\n"
+                                "| Month | Units Sold |\n"
+                                "| :--- | :--- |\n"
+                                "| Jan | 50 |\n"
+                            )
+                        }
+                    }
+                ]
+            }
 
     def fake_post(url: str, *, json: dict[str, object], timeout: float) -> FakeResponse:
         captured["url"] = url
@@ -125,10 +138,20 @@ def test_lm_studio_vlm_parser_calls_openai_compatible_endpoint(
         )
     )
 
-    assert result.parsed_text == "Invoice text from Gemma"
+    assert result.parsed_text is not None
+    assert "Invoice text from Gemma" in result.parsed_text
+    assert result.tables == [
+        {
+            "table_id": "vlm-table-0",
+            "rows": [["Month", "Units Sold"], ["Jan", "50"]],
+            "source": "lm_studio_vlm_markdown",
+            "confidence": 0.7,
+        }
+    ]
     assert captured["url"] == "http://localhost:1234/v1/chat/completions"
     assert captured["json"]["model"] == "gemma4-12b"  # type: ignore[index]
     assert result.structured_data["source"] == "lm_studio_vlm"
+    assert result.structured_data["table_count"] == 1
 
 
 def test_embedding_service_can_call_lm_studio_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,6 +184,11 @@ def test_embedding_service_can_call_lm_studio_embeddings(monkeypatch: pytest.Mon
         {
             "chunk_id": "chunk-0",
             "model": "nomic-text-embedding",
+            "dimensions": 3,
             "vector": [0.1, 0.2, 0.3],
+            "index_policy": {
+                "metric": "cosine",
+                "intended_use": "semantic_search",
+            },
         }
     ]
