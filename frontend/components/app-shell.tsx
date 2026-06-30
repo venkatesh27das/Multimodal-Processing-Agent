@@ -111,7 +111,7 @@ function GlobalSearchBox() {
         <input
           id="global-search-input"
           className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-ink outline-none placeholder:text-muted"
-          placeholder="Search tasks, files, jobs, assets..."
+          placeholder="Search tasks, files, runs, assets..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onFocus={() => setOpen(true)}
@@ -134,7 +134,7 @@ function GlobalSearchBox() {
               <SearchState
                 text={
                   trimmedQuery
-                    ? "No matching tasks, files, jobs, assets, parsers, skills, or reviews."
+                    ? "No matching tasks, files, runs, assets, parsers, skills, or reviews."
                     : "Type to search, or browse recent workspace records."
                 }
               />
@@ -223,7 +223,7 @@ function typeLabel(type: SearchResultType) {
   const labels: Record<SearchResultType, string> = {
     agent_task: "Agent Tasks",
     file: "Files",
-    job: "Jobs",
+    job: "Runs",
     asset: "Assets",
     parser: "Parsers",
     skill: "Skills",

@@ -45,7 +45,7 @@ flowchart TD
 | --- | --- | --- |
 | Agent API | Working | Agent Card, task create/list/detail/cancel, messages, artifacts, events, SSE stream. |
 | Google ADK runtime | Working | ADK-backed phase-agent wrapper around deterministic parser orchestration. |
-| App console | Working | Next.js operations UI for parsing, jobs, assets, registries, review, observability. |
+| App console | Working | Next.js operations UI for New Run, Run History, output asset review, assets, registries, review, and observability. |
 | Local parsers | Working | HTML, DOCX, native PDF text, OCR paths, optional LM Studio VLM. |
 | Skills | Working MVP | Folder-backed skill packs with schemas and validation rules. |
 | MCP-style tools | Working MVP | Local callable registry, gateway metadata, and per-task governance allow/block trace; not a full MCP SDK transport yet. |
@@ -78,9 +78,10 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Poll task status or stream persisted task events over SSE.
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Inspect per-task tool governance policy, allowed/blocked gateway tools, and planner-selectable skill metadata.
-- Use Parse and Job Detail trace panels for timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, and worker state.
+- Use New Run and Run Detail trace panels for timeline, decisions, tool policy, tool calls, skill selection, artifacts, quality, lineage, subagents, and worker state.
+- Choose output asset types before execution, then inspect generated assets in Run History -> Run Detail -> Outputs.
 - Search across agent tasks, files, jobs, assets, parsers, skills, and review items from the app shell or `GET /api/v1/search`.
-- Use a Next.js console for Home, Parse, Jobs, Job Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
+- Use a Next.js console for Home, New Run, Run History, Run Detail, Parsers, Skills, Review Queue, Assets, Observability, and Settings.
 
 ## Current Agent Capabilities
 
@@ -201,17 +202,52 @@ Persisted task outputs:
 - lineage report
 - audit summary
 
+## Generated Asset Catalog
+
+The agent can publish a single governed `ParsedAsset` record that contains many typed generated assets. New Run lets users choose the requested asset types before execution. The default baseline is intentionally minimal:
+
+- `parsed_content`
+- `document_structure`
+- `tables`
+- `quality_report`
+- `lineage`
+
+Objective presets add more assets when needed. For example, Search adds chunks, vectors, and evidence; Structured extraction adds entities and user-defined fields; Graph adds relationships and a knowledge graph.
+
+| Asset kind | What it contains | Current generation behavior | Where to view |
+| --- | --- | --- | --- |
+| `parsed_content` | Extracted document text or transcript text. | Generated from parser output whenever text is available. | Run Detail -> Outputs -> Parsed Content. |
+| `document_structure` | Layout blocks, section-like records, and document metadata. | Built from parser layout blocks and metadata. | Run Detail -> Outputs -> Document Structure. |
+| `tables` | Extracted table rows and cells. | Comes from DOCX/HTML parsers, VLM markdown tables, or parser table payloads. | Run Detail -> Outputs -> Tables. |
+| `chunks` | Retrieval-ready text chunks with character offsets and token estimates. | Generated when requested for search, vectors, summaries, evidence, relationships, or graph outputs. | Run Detail -> Outputs -> Chunks. |
+| `vectors` | Embedding records tied to chunks. | Uses local deterministic hashing embeddings today; LM Studio embedding configuration is available for local model use. | Run Detail -> Outputs -> Vectors. |
+| `entities` | Entity records with type, text/value, confidence, and source hints. | Extracted using lightweight heuristics plus requested user-defined fields where available. | Run Detail -> Outputs -> Entities. |
+| `relationships` | Source-target relationship records with confidence and evidence references. | Generated from entity and chunk signals when relationships or graph output is requested. | Run Detail -> Outputs -> Relationships. |
+| `knowledge_graph` | Graph payload with nodes and edges. | Built from extracted entities and relationships for graph-oriented runs. | Run Detail -> Outputs -> Knowledge Graph. |
+| `summary` | Extractive summary and key points. | Generated from parsed text/chunks using local ranking. | Run Detail -> Outputs -> Summary. |
+| `classification` | Document class, file type, parser, skill, and output contract context. | Generated from file metadata, parser plan, and text hints. | Run Detail -> Outputs -> Classification. |
+| `evidence` | Evidence spans connected to chunks/source offsets. | Generated from chunks and extracted signals when evidence is requested. | Run Detail -> Outputs -> Evidence. |
+| `quality_report` | Parser confidence, extraction confidence, completeness, consistency, schema score, and review decision. | Always available when selected; backed by persisted quality reports. | Run Detail -> Outputs -> Quality Report. |
+| `lineage` | Plan id, execution result id, source file id, storage path, parser id, and skill id. | Always available when selected; backed by asset publishing lineage. | Run Detail -> Outputs -> Lineage. |
+| `review_package` | Review-focused payload with rationale and uncertain output context. | Generated when selected; review queue routing still depends on quality policy. | Run Detail -> Outputs -> Review Package and Review Queue. |
+| `user_defined_extraction` | User-requested fields and matched entities. | Generated from `custom_outputs` / requested field schema hints using local matching. | Run Detail -> Outputs -> User Defined Extraction. |
+| `image_understanding` | Image descriptions and visual extraction notes. | Included when a parser produces image descriptions, especially VLM/OCR paths. | Run Detail -> Outputs -> Image Understanding. |
+| `audio_transcript` | Transcript text for audio inputs. | Placeholder parser path today; real speech model integration is pending. | Run Detail -> Outputs -> Audio Transcript. |
+| `video_understanding` | Video transcript or visual understanding payload. | Placeholder parser path today; real video pipeline is pending. | Run Detail -> Outputs -> Video Understanding. |
+
+The Outputs tab in Run Detail is organized as an Outputs Review workspace: metrics at the top, a main selected asset viewer, a generated-assets rail, and quick preview shortcuts for text, entities, and tables.
+
 ## Screenshots
 
 The UI is intentionally compact and operations-focused. The screenshots below are the current wireframe-aligned app screens in this repo.
 
-| Home | Parse |
+| Home | New Run |
 | --- | --- |
-| ![Home screen](application%20wireframes/Home%20Screen.png)<br>Operational entry point for recent activity, parser health, review pressure, and starting parsing work. | ![Parse screen](application%20wireframes/Parse%20Screen1.png)<br>Upload and parse workflow surface for turning documents into agent-backed parsing runs. |
+| ![Home screen](application%20wireframes/Home%20Screen.png)<br>Operational entry point for recent activity, parser health, review pressure, and starting parsing work. | ![New Run screen](application%20wireframes/Parse%20Screen1.png)<br>Upload, configure output assets, and create agent-backed parsing runs. |
 
-| Jobs | Review Queue |
+| Run History | Review Queue |
 | --- | --- |
-| ![Jobs screen](application%20wireframes/Jobs%20Screen.png)<br>Run history, parser choice, quality state, and operational metadata for parsing jobs. | ![Review queue screen](application%20wireframes/Review%20Queue%20Screen.png)<br>Human review queue for uncertain outputs, low-confidence fields, and review rationale. |
+| ![Run History screen](application%20wireframes/Jobs%20Screen.png)<br>Run history, parser choice, quality state, generated outputs, and operational metadata. | ![Review queue screen](application%20wireframes/Review%20Queue%20Screen.png)<br>Human review queue for uncertain outputs, low-confidence fields, and review rationale. |
 
 | Assets | Observability |
 | --- | --- |
@@ -320,7 +356,7 @@ Start the frontend:
 make web
 ```
 
-Open `http://localhost:3000`, then visit Home, Parse, Jobs, Assets, and Observability.
+Open `http://localhost:3000`, then visit Home, New Run, Run History, Assets, and Observability.
 
 Expected result:
 
@@ -364,7 +400,19 @@ curl -X POST http://localhost:8000/api/v1/agent/tasks \
       "tables": true,
       "entities": true,
       "relationships": true,
-      "evidence_spans": true
+      "evidence": true,
+      "quality_report": true,
+      "lineage": true,
+      "selected_asset_types": [
+        "parsed_content",
+        "document_structure",
+        "tables",
+        "entities",
+        "relationships",
+        "evidence",
+        "quality_report",
+        "lineage"
+      ]
     },
     "quality_target": "balanced",
     "cost_profile": "balanced",
@@ -547,10 +595,10 @@ Run `make api` and `make web`, then open `http://localhost:3000`.
 
 Core screens:
 
-- **Home**: operational snapshot, recent jobs, parser health, review pressure, and entry points into parsing.
-- **Parse**: file upload and parse workflow surface. This is where the app should increasingly converge on agent-task creation.
-- **Jobs**: parse job list, status, parser used, quality, review state, and operational metadata.
-- **Job Detail**: plan, quality, assets, audit, execution context, and the full agent trace for a specific job.
+- **Home**: operational snapshot, recent runs, parser health, review pressure, and entry points into parsing.
+- **New Run**: file upload, parser-agent configuration, output asset selection, governance preferences, and run submission.
+- **Run History**: run list, status, parser used, quality, review state, and operational metadata.
+- **Run Detail**: plan, quality, Outputs Review, audit, execution context, and the full agent trace for a specific run.
 - **Parsers**: parser registry, supported file types, strengths, weaknesses, deployment mode, and usage signals.
 - **Skills**: folder-backed skill packs, extraction schemas, validation rules, and supported document types.
 - **Review Queue**: uncertain outputs and rationale for human review.
@@ -570,7 +618,7 @@ Important routes:
 | Files | `POST /files/upload`, `GET /files/{file_id}`, `GET /files/{file_id}/profile` |
 | Agent | `GET /agent/card`, `POST /agent/tasks`, `POST /agent/tasks/upload`, `GET /agent/tasks/{task_id}`, `POST /agent/tasks/{task_id}/cancel` |
 | Agent Trace | `GET /agent/tasks/{task_id}/messages`, `/artifacts`, `/events`, `/events/stream` |
-| Jobs | `POST /jobs`, `POST /jobs/plan`, `GET /jobs`, `GET /jobs/{job_id}` |
+| Run History / Jobs | `POST /jobs`, `POST /jobs/plan`, `GET /jobs`, `GET /jobs/{job_id}` |
 | Assets | `GET /assets/{asset_id}`, `GET /files/{file_id}/assets`, `GET /jobs/{job_id}/assets` |
 | Registries | `GET /parser-registry`, `GET /skills-registry` |
 | Search | `GET /search?q=...&limit=20` |
@@ -802,7 +850,7 @@ Capability expansion:
 ## Good First Developer Paths
 
 - **API integrator**: start with `POST /api/v1/agent/tasks/upload`, then read artifacts and events.
-- **Frontend developer**: wire Parse/Home flows to agent tasks and render the task timeline.
+- **Frontend developer**: wire New Run/Home flows to agent tasks and render the task timeline.
 - **Parser developer**: add a parser adapter under `backend/app/parsers` and register it in the parser registry seed data.
 - **Skill developer**: add a skill pack under `backend/app/skills` with schema, validation rules, and examples.
 - **Platform developer**: replace the DB-backed local queue with a production queue backend, dead-letter workflow, and worker dashboard.

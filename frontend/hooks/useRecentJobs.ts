@@ -14,7 +14,7 @@ export function useRecentJobs(limit = 6) {
     try {
       setJobs(await dashboardApi.getRecentJobs(limit));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load recent jobs.");
+      setError(err instanceof Error ? err.message : "Unable to load recent runs.");
       setJobs([]);
     } finally {
       setLoading(false);

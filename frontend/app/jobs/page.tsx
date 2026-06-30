@@ -65,11 +65,11 @@ export default function JobsPage() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-ink">Jobs</h2>
-          <p className="mt-1 text-sm text-muted">Track and manage all parsing jobs across your workspace.</p>
+          <h2 className="text-xl font-bold text-ink">Run History</h2>
+          <p className="mt-1 text-sm text-muted">Track and manage all parsing runs across your workspace.</p>
         </div>
         <Link href="/create-run">
-          <ActionButton icon={Plus}>New Parse Job</ActionButton>
+          <ActionButton icon={Plus}>New Run</ActionButton>
         </Link>
       </div>
 
@@ -82,7 +82,7 @@ export default function JobsPage() {
           <label className="flex h-10 min-w-[250px] flex-1 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted shadow-panel">
             <input
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
-              placeholder="Search jobs, files, objectives..."
+              placeholder="Search runs, files, objectives..."
               value={filters.search}
               onChange={(event) => updateFilters({ search: event.target.value })}
             />
@@ -136,7 +136,7 @@ export default function JobsPage() {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard
           icon={FileCheck2}
-          label="Total Jobs"
+          label="Total Runs"
           value={String(jobs.length)}
           delta="Loaded from backend"
           tone="info"
@@ -197,7 +197,7 @@ export default function JobsPage() {
             icon={actions.busyAction === "export" ? Loader2 : Download}
             variant="secondary"
             onClick={actions.exportJobs}
-            title={actions.exportUnsupported ? "Export endpoint is not available yet." : "Export jobs"}
+            title={actions.exportUnsupported ? "Export endpoint is not available yet." : "Export runs"}
             disabled={actions.busyAction === "export" || actions.exportUnsupported}
           >
             Export
@@ -206,7 +206,7 @@ export default function JobsPage() {
 
         {error ? (
           <div className="m-3 rounded-lg border border-amber-200 bg-warning-soft p-3 text-sm text-amber-800">
-            Live jobs could not be loaded: {error}
+            Live runs could not be loaded: {error}
           </div>
         ) : null}
 

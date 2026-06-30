@@ -722,6 +722,7 @@ function RunningState({
   progress: JobProgress;
 }) {
   const firstJob = jobRuns[0]?.job;
+  const runHistoryHref = firstJob?.id ? `/jobs/${firstJob.id}` : "/jobs";
   const expectedAssets = Array.from(
     new Set(jobRuns.flatMap((run) => run.plan.expected_assets ?? [])),
   );
@@ -745,7 +746,7 @@ function RunningState({
             </div>
           </div>
           <div className="flex gap-3">
-            <Link href={firstJob?.id ? `/jobs/${firstJob.id}` : "/run-monitor"}>
+            <Link href={runHistoryHref}>
               <ActionButton type="button" icon={ExternalLink} variant="secondary">View Run</ActionButton>
             </Link>
             <ActionButton type="button" onClick={onReset}>Create Another Run</ActionButton>
@@ -868,7 +869,7 @@ function RunningState({
               Open the run detail to inspect generated counts, previews, lineage, and evidence.
             </p>
             {firstJob?.id ? (
-              <Link href={`/jobs/${firstJob.id}`} className="mt-3 flex items-center justify-between rounded-lg border border-border p-3 text-sm hover:bg-surface">
+              <Link href={runHistoryHref} className="mt-3 flex items-center justify-between rounded-lg border border-border p-3 text-sm hover:bg-surface">
                 <span>
                   <span className="block font-bold text-ink">View Generated Assets</span>
                   <span className="text-xs text-muted">Open this run asset bundle</span>
@@ -881,7 +882,7 @@ function RunningState({
             <SectionHeader title="Next destinations" description="You can monitor or review results as the run progresses." />
             <div className="mt-4 space-y-3">
               {[
-                ["Open Run Monitor", "Track all active runs", "/run-monitor"],
+                ["Open Run History", "Track all active runs", "/jobs"],
                 ["Open Review Queue", "Review items as they complete", "/review-queue"],
                 ["Open Assets", "View parsed outputs", "/assets"],
               ].map(([title, description, href]) => (

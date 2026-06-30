@@ -107,9 +107,13 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   const entities = firstAsset?.entities ?? [];
   const tables = firstAsset?.tables ?? [];
   const generatedAssets = firstAsset ? generatedAssetItems(firstAsset) : [];
-  const selectedOutputKind = generatedAssets.some((asset) => asset.kind === selectedOutputAsset)
-    ? selectedOutputAsset
-    : generatedAssets[0]?.kind ?? null;
+  const selectedOutputKind = selectedOutputAsset ?? generatedAssets[0]?.kind ?? null;
+  const showOutputAsset = (kind: string) => {
+    setSelectedOutputAsset(kind);
+    window.requestAnimationFrame(() => {
+      document.getElementById("asset-viewer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   if (!detail) {
     return (
@@ -124,7 +128,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
         <div>
           <div className="mb-3 flex items-center gap-2 text-sm text-muted">
-            <Link className="hover:text-accent" href="/jobs">Jobs</Link>
+            <Link className="hover:text-accent" href="/jobs">Run History</Link>
             <span>›</span>
             <span className="font-bold text-accent">{detail.job.id}</span>
           </div>
@@ -272,7 +276,7 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
               <SectionTitle title="Quick Actions" />
               <div className="mt-3 space-y-2">
                 <QuickAction icon={FolderOpen} title="Open Assets" detail="View extracted outputs" href="/assets" />
-                <QuickAction icon={RefreshCw} title="Retry Job" detail="Re-run parsing for this file" href="/jobs" />
+                <QuickAction icon={RefreshCw} title="Retry Run" detail="Re-run parsing for this file" href="/jobs" />
                 <QuickAction icon={Send} title="Send to Review" detail="Add to review queue" href="/review-queue" />
               </div>
             </Card>
@@ -284,69 +288,100 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         <div className="space-y-3">
           <Card className="p-4">
             <SectionTitle
-              title="Assets Generated"
+              title="Outputs Review"
               action={<span className="text-xs font-bold text-muted">{generatedAssets.length} asset types</span>}
             />
-            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {generatedAssets.map((asset) => (
-                <GeneratedAssetCard
-                  key={asset.kind}
-                  active={asset.kind === selectedOutputKind}
-                  asset={asset}
-                  onSelect={() => setSelectedOutputAsset(asset.kind)}
-                />
-              ))}
-              {!generatedAssets.length ? (
-                <div className="rounded-md border border-border p-3 text-sm text-muted">
-                  No generated assets have been published for this run yet.
-                </div>
-              ) : null}
+            <p className="mt-1 text-sm text-muted">
+              Inspect published assets, rendered previews, and machine-readable payloads from this run.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <LineageNode label="Parsed Content" value={parsedText ? String(parsedText.length) : "0"} detail="Characters extracted" />
+              <LineageNode label="Chunks" value={String(firstAsset?.chunks.length ?? 0)} detail="Retrieval units" />
+              <LineageNode label="Entities" value={String(entities.length)} detail="Detected records" />
+              <LineageNode label="Tables" value={String(tables.length)} detail="Structured tables" />
             </div>
           </Card>
 
-          <Card className="p-4">
-            <SectionTitle
-              title="Asset Viewer"
-              action={<span className="text-xs font-bold text-muted">{selectedOutputKind ? formatAssetKind(selectedOutputKind) : "No asset selected"}</span>}
-            />
-            <div className="mt-3">
-              {firstAsset && selectedOutputKind ? (
-                <AssetViewer asset={firstAsset} kind={selectedOutputKind} />
-              ) : (
-                <div className="rounded-md border border-border p-3 text-sm text-muted">
-                  No generated asset is available to inspect yet.
-                </div>
-              )}
-            </div>
-          </Card>
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <div className="space-y-3">
+              <div id="asset-viewer">
+                <Card className="p-4">
+                  <SectionTitle
+                    title={selectedOutputKind ? formatAssetKind(selectedOutputKind) : "Asset Viewer"}
+                    action={<span className="text-xs font-bold text-muted">{selectedOutputKind ? "Selected asset" : "No asset selected"}</span>}
+                  />
+                  <div className="mt-3">
+                    {firstAsset && selectedOutputKind ? (
+                      <AssetViewer asset={firstAsset} kind={selectedOutputKind} />
+                    ) : (
+                      <div className="rounded-md border border-border p-3 text-sm text-muted">
+                        No generated asset is available to inspect yet.
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
 
-          <Card className="p-4">
-            <SectionTitle title="Outputs Preview" />
-            <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_1fr_1.1fr]">
-              <PreviewPanel title="Extracted Text (Preview)" action="View full text">
-                <pre className="max-h-44 overflow-hidden whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs text-ink">
-                  {parsedText ?? "No text preview is available for this asset yet."}
-                </pre>
-              </PreviewPanel>
-              <PreviewPanel title={`Entities (${entities.length})`} action="View all">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {(entities.length ? entities.slice(0, 10).map(entityLabel) : ["No entities extracted"]).map((item, index) => (
-                    <span key={item} className={`rounded-md px-2 py-1 font-semibold ${index % 3 === 0 ? "bg-purple-soft text-purple" : index % 3 === 1 ? "bg-success-soft text-success" : "bg-info-soft text-info"}`}>{item}</span>
-                  ))}
+              <Card className="p-4">
+                <SectionTitle title="Output Previews" />
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  <PreviewPanel
+                    title="Extracted Text"
+                    action="View full text"
+                    onAction={() => showOutputAsset("parsed_content")}
+                  >
+                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs text-ink">
+                      {parsedText ?? "No text preview is available for this asset yet."}
+                    </pre>
+                  </PreviewPanel>
+                  <PreviewPanel
+                    title={`Entities (${entities.length})`}
+                    action="View all"
+                    onAction={() => showOutputAsset("entities")}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {(entities.length ? entities.slice(0, 10).map(entityLabel) : ["No entities extracted"]).map((item, index) => (
+                        <span key={item} className={`rounded-md px-2 py-1 font-semibold ${index % 3 === 0 ? "bg-purple-soft text-purple" : index % 3 === 1 ? "bg-success-soft text-success" : "bg-info-soft text-info"}`}>{item}</span>
+                      ))}
+                    </div>
+                  </PreviewPanel>
+                  <PreviewPanel
+                    title={`Tables (${tables.length})`}
+                    action="View all"
+                    onAction={() => showOutputAsset("tables")}
+                  >
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-surface text-muted">
+                        <tr>{tableHeaders(tables[0]).map((header) => <th key={header} className="p-2">{header}</th>)}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {tableRows(tables[0]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="p-2">{cell}</td>)}</tr>)}
+                      </tbody>
+                    </table>
+                  </PreviewPanel>
                 </div>
-              </PreviewPanel>
-              <PreviewPanel title={`Tables (${tables.length})`} action="View all">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-surface text-muted">
-                    <tr>{tableHeaders(tables[0]).map((header) => <th key={header} className="p-2">{header}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {tableRows(tables[0]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="p-2">{cell}</td>)}</tr>)}
-                  </tbody>
-                </table>
-              </PreviewPanel>
+              </Card>
             </div>
-          </Card>
+
+            <Card className="p-4">
+              <SectionTitle title="Generated Assets" />
+              <div className="mt-3 space-y-2">
+                {generatedAssets.map((asset) => (
+                  <OutputAssetListItem
+                    key={asset.kind}
+                    active={asset.kind === selectedOutputKind}
+                    asset={asset}
+                    onSelect={() => showOutputAsset(asset.kind)}
+                  />
+                ))}
+                {!generatedAssets.length ? (
+                  <div className="rounded-md border border-border p-3 text-sm text-muted">
+                    No generated assets have been published for this run yet.
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          </div>
         </div>
       ) : null}
 
@@ -497,7 +532,7 @@ type GeneratedAssetItem = {
   ready: boolean;
 };
 
-function GeneratedAssetCard({
+function OutputAssetListItem({
   active = false,
   asset,
   onSelect,
@@ -508,28 +543,54 @@ function GeneratedAssetCard({
 }) {
   return (
     <button
-      className={`rounded-md border p-3 text-left transition hover:bg-surface ${active ? "border-accent bg-accent-soft/40" : "border-border"}`}
+      className={`w-full rounded-md border p-3 text-left transition hover:bg-surface ${active ? "border-accent bg-accent-soft/40" : "border-border"}`}
       type="button"
       onClick={onSelect}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span>
+      <span className="flex items-start justify-between gap-3">
+        <span className="min-w-0">
           <span className="block text-sm font-bold text-ink">{asset.label}</span>
           <span className="mt-1 block text-xs text-muted">{assetStatusDetail(asset)}</span>
         </span>
         <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${asset.ready ? "bg-success-soft text-success" : "bg-slate-100 text-muted"}`}>
           {asset.status}
         </span>
-      </div>
-      <p className="mt-3 text-2xl font-bold text-ink">{asset.count}</p>
+      </span>
+      <span className="mt-3 flex items-center justify-between">
+        <span className="text-2xl font-bold text-ink">{asset.count}</span>
+        <ArrowRight className="h-4 w-4 text-muted" />
+      </span>
     </button>
   );
 }
 
-function PreviewPanel({ action, children, title }: { action: string; children: React.ReactNode; title: string }) {
+function PreviewPanel({
+  action,
+  children,
+  onAction,
+  title,
+}: {
+  action: string;
+  children: React.ReactNode;
+  onAction?: () => void;
+  title: string;
+}) {
   return (
     <div className="rounded-md border border-border p-3">
-      <div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-ink">{title}</p><span className="text-xs font-bold text-info">{action}</span></div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-ink">{title}</p>
+        {onAction ? (
+          <button
+            className="shrink-0 text-xs font-bold text-info hover:text-accent"
+            type="button"
+            onClick={onAction}
+          >
+            {action}
+          </button>
+        ) : (
+          <span className="shrink-0 text-xs font-bold text-info">{action}</span>
+        )}
+      </div>
       {children}
     </div>
   );

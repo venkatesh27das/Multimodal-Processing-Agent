@@ -508,7 +508,7 @@ export function defaultParseConfiguration(): ParseConfiguration {
     fallbackPolicy: "recommended",
     ocrImageHandling: "auto",
     tableStructureDetection: true,
-    generateEmbeddings: true,
+    generateEmbeddings: false,
     sensitivityHandling: "auto_mask",
     selectedAssets: defaultAssetsForObjective("general"),
   };
@@ -518,20 +518,20 @@ export function defaultAssetsForObjective(objective: ParseObjective): GeneratedA
   const base: GeneratedAssetKind[] = [
     "parsed_content",
     "document_structure",
-    "classification",
+    "tables",
     "quality_report",
     "lineage",
   ];
   if (objective === "search") return [...base, "chunks", "vectors", "evidence"];
   if (objective === "structured") {
-    return [...base, "tables", "entities", "evidence", "user_defined_extraction"];
+    return [...base, "entities", "evidence", "user_defined_extraction"];
   }
   if (objective === "graph") {
     return [...base, "entities", "relationships", "knowledge_graph", "evidence"];
   }
   if (objective === "transcript") return [...base, "chunks", "summary", "entities", "evidence"];
-  if (objective === "custom") return [...base, "tables", "chunks", "entities", "evidence"];
-  return [...base, "tables", "chunks", "summary", "evidence"];
+  if (objective === "custom") return [...base, "entities", "evidence"];
+  return base;
 }
 
 export function deriveJobProgress(job: ParseJob | null, totalFiles: number, processedFiles: number): JobProgress {

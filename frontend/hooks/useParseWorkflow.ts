@@ -57,6 +57,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
 
   const updateObjective = useCallback((nextObjective: ParseObjective) => {
     setObjective(nextObjective);
+    const selectedAssets = defaultAssetsForObjective(nextObjective);
     setConfiguration((current) => ({
       ...current,
       outputPreset: nextObjective === "search" || nextObjective === "graph"
@@ -64,9 +65,9 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
         : nextObjective === "structured"
           ? "structured"
           : current.outputPreset,
-      tableStructureDetection: nextObjective === "structured" || current.tableStructureDetection,
-      generateEmbeddings: nextObjective === "search" || current.generateEmbeddings,
-      selectedAssets: defaultAssetsForObjective(nextObjective),
+      tableStructureDetection: selectedAssets.includes("tables"),
+      generateEmbeddings: selectedAssets.includes("vectors"),
+      selectedAssets,
     }));
   }, []);
 
@@ -153,30 +154,31 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     setJobRuns([]);
     setEvents([]);
     try {
-      const responses: ParseJobRunResponse[] = readyFiles.every((file) => isDemoFile(file.fileId))
-        ? readyFiles.map((file, index) =>
-            demoRunResponse(file, objective, configuration, index, readyFiles.length),
-          )
-        : agentTaskToRunResponses(
-            await agentApi.createTask({
-              fileIds: readyFiles.map((file) => file.fileId as string),
-              objective,
-              configuration,
-              title: `Parse ${readyFiles.length} file${readyFiles.length === 1 ? "" : "s"}`,
-            }),
-            readyFiles,
-          );
-      if (!readyFiles.every((file) => isDemoFile(file.fileId))) {
-        setAgentTask(await agentApi.getTask(responses[0].job.id));
+      const demoRun = readyFiles.every((file) => isDemoFile(file.fileId));
+      let createdTask: AgentTaskDetail | null = null;
+      let runResponses: ParseJobRunResponse[];
+      if (demoRun) {
+        runResponses = readyFiles.map((file, index) =>
+          demoRunResponse(file, objective, configuration, index, readyFiles.length),
+        );
+      } else {
+        createdTask = await agentApi.createTask({
+          fileIds: readyFiles.map((file) => file.fileId as string),
+          objective,
+          configuration,
+          title: `Process ${readyFiles.length} file${readyFiles.length === 1 ? "" : "s"}`,
+        });
+        runResponses = agentTaskToRunResponses(createdTask, readyFiles);
+        setAgentTask(await agentApi.getTask(createdTask.id));
       }
-      setJobRuns(responses);
+      setJobRuns(runResponses);
       setJobSnapshots(
-        responses.reduce<Record<string, ParseJob>>((acc, response) => {
+        runResponses.reduce<Record<string, ParseJob>>((acc, response) => {
           acc[response.job.id] = response.job;
           return acc;
         }, {}),
       );
-      setEvents(buildInitialEvents(responses));
+      setEvents(buildInitialEvents(runResponses));
       setStep("running");
       setToast({ tone: "success", message: "Parser-agent task created successfully." });
     } catch (error) {
@@ -402,13 +404,12 @@ function agentTaskToRunResponses(
     ? task.input_payload.job_ids.map(String)
     : [];
   return fileIds.map((fileId, index) => {
-    const file = files.find((item) => item.fileId === fileId);
     const syntheticJobId = index === 0 ? task.id : `${task.id}-${index + 1}`;
-    const jobId = jobIds[index] ?? syntheticJobId;
+    const jobId = jobIds[index] ?? (index === 0 ? task.job_id : null) ?? task.lineage?.job_id ?? syntheticJobId;
     const parserId = task.plan?.selected_parser_id ?? parserForTaskArtifact(task, fileId) ?? "agent-selected";
     return {
       job: {
-        id: syntheticJobId,
+        id: jobId,
         file_id: fileId,
         status,
         parser_id: parserId,
@@ -430,7 +431,7 @@ function agentTaskToRunResponses(
         selected_skill_id: task.plan?.selected_skill_id ?? null,
         decision_reason: task.plan?.summary ?? task.summary ?? "Parser-agent plan is running.",
         output_contract: task.requested_output_contract,
-        expected_assets: ["Parsed text", "Tables", "Entities", "Metadata", "Lineage"],
+        expected_assets: expectedAssetsForTask(task),
         quality_threshold: task.plan?.quality_threshold ?? 0.85,
         cost_profile: {},
         human_review_policy: task.governance_constraints,
@@ -463,6 +464,22 @@ function agentTaskToRunResponses(
       review_item: null,
     };
   });
+}
+
+function expectedAssetsForTask(task: AgentTaskDetail): string[] {
+  const selectedAssets = task.requested_output_contract.selected_asset_types;
+  if (!Array.isArray(selectedAssets) || !selectedAssets.length) {
+    return ["Parsed content", "Document structure", "Tables", "Quality report", "Lineage"];
+  }
+  return selectedAssets.map((asset) => humanizeAssetKind(String(asset)));
+}
+
+function humanizeAssetKind(asset: string): string {
+  return asset
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function materializedFileIds(task: AgentTaskDetail, files: UploadedFile[]): string[] {

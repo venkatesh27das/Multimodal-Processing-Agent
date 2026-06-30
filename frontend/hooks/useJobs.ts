@@ -33,7 +33,7 @@ export function useJobs() {
       const nextJobs = await jobsApi.listJobs();
       setJobs(nextJobs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load jobs.");
+      setError(err instanceof Error ? err.message : "Unable to load runs.");
       setJobs([]);
     } finally {
       setLoading(false);
