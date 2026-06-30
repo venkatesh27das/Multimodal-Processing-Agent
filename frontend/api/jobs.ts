@@ -105,6 +105,22 @@ export type ParseObjective =
 export type QualityTarget = "low" | "balanced" | "high";
 export type CostProfile = "low_cost" | "balanced" | "premium";
 export type LatencyProfile = "batch" | "interactive" | "real_time";
+export type GeneratedAssetKind =
+  | "parsed_content"
+  | "document_structure"
+  | "tables"
+  | "chunks"
+  | "vectors"
+  | "entities"
+  | "relationships"
+  | "knowledge_graph"
+  | "summary"
+  | "classification"
+  | "evidence"
+  | "quality_report"
+  | "lineage"
+  | "review_package"
+  | "user_defined_extraction";
 
 export type ParseConfiguration = {
   outputPreset: "balanced" | "text_structure" | "structured" | "search" | "graph";
@@ -120,6 +136,7 @@ export type ParseConfiguration = {
   tableStructureDetection: boolean;
   generateEmbeddings: boolean;
   sensitivityHandling: "auto_mask" | "detect_only" | "none";
+  selectedAssets: GeneratedAssetKind[];
 };
 
 export type ParserRecommendation = {
@@ -493,7 +510,28 @@ export function defaultParseConfiguration(): ParseConfiguration {
     tableStructureDetection: true,
     generateEmbeddings: true,
     sensitivityHandling: "auto_mask",
+    selectedAssets: defaultAssetsForObjective("general"),
   };
+}
+
+export function defaultAssetsForObjective(objective: ParseObjective): GeneratedAssetKind[] {
+  const base: GeneratedAssetKind[] = [
+    "parsed_content",
+    "document_structure",
+    "classification",
+    "quality_report",
+    "lineage",
+  ];
+  if (objective === "search") return [...base, "chunks", "vectors", "evidence"];
+  if (objective === "structured") {
+    return [...base, "tables", "entities", "evidence", "user_defined_extraction"];
+  }
+  if (objective === "graph") {
+    return [...base, "entities", "relationships", "knowledge_graph", "evidence"];
+  }
+  if (objective === "transcript") return [...base, "chunks", "summary", "entities", "evidence"];
+  if (objective === "custom") return [...base, "tables", "chunks", "entities", "evidence"];
+  return [...base, "tables", "chunks", "summary", "evidence"];
 }
 
 export function deriveJobProgress(job: ParseJob | null, totalFiles: number, processedFiles: number): JobProgress {
@@ -585,31 +623,67 @@ function buildParserSelectionPayload(
 }
 
 function buildOutputContract(objective: ParseObjective, configuration: ParseConfiguration): Record<string, unknown> {
+  const assets = new Set(configuration.selectedAssets);
+  const wantsTables = assets.has("tables") || configuration.tableStructureDetection || objective === "structured";
+  const wantsChunks = assets.has("chunks") || assets.has("vectors");
+  const wantsVectors = assets.has("vectors") || configuration.generateEmbeddings;
+  const wantsEntities =
+    assets.has("entities") ||
+    assets.has("relationships") ||
+    assets.has("knowledge_graph") ||
+    objective === "graph" ||
+    objective === "structured";
+  const wantsRelationships =
+    assets.has("relationships") ||
+    assets.has("knowledge_graph") ||
+    objective === "graph";
   return {
     parsed_text: true,
     metadata: true,
-    sections: true,
-    tables: configuration.tableStructureDetection || objective === "structured",
-    chunks: objective === "search" || configuration.generateEmbeddings,
-    embeddings: configuration.generateEmbeddings,
-    entities: objective === "graph" || objective === "structured",
-    relationships: objective === "graph",
+    sections: assets.has("document_structure"),
+    tables: wantsTables,
+    chunks: objective === "search" || wantsChunks || wantsVectors,
+    embeddings: wantsVectors,
+    entities: wantsEntities,
+    relationships: wantsRelationships,
+    knowledge_graph: assets.has("knowledge_graph"),
+    summary: assets.has("summary"),
+    classification: assets.has("classification"),
+    evidence: assets.has("evidence"),
+    quality_report: assets.has("quality_report"),
+    lineage: assets.has("lineage"),
+    review_package: assets.has("review_package"),
+    user_defined_extraction: assets.has("user_defined_extraction"),
     transcript: objective === "transcript",
     custom_outputs: configuration.customOutputs || null,
     output_preset: configuration.outputPreset,
+    selected_asset_types: configuration.selectedAssets,
   };
 }
 
 function expectedOutputsFor(configuration: ParseConfiguration): string[] {
-  return [
-    "Parsed text",
-    configuration.tableStructureDetection ? "Tables" : null,
-    "Entities",
-    "Relationships",
-    "Chunks",
-    configuration.generateEmbeddings ? "Embeddings" : null,
-    "Metadata",
-  ].filter((value): value is string => Boolean(value));
+  return configuration.selectedAssets.map(labelForGeneratedAsset);
+}
+
+function labelForGeneratedAsset(asset: GeneratedAssetKind): string {
+  const labels: Record<GeneratedAssetKind, string> = {
+    parsed_content: "Parsed content",
+    document_structure: "Document structure",
+    tables: "Tables",
+    chunks: "Chunks",
+    vectors: "Vectors",
+    entities: "Entities",
+    relationships: "Relationships",
+    knowledge_graph: "Knowledge graph",
+    summary: "Summary",
+    classification: "Classification",
+    evidence: "Evidence spans",
+    quality_report: "Quality report",
+    lineage: "Lineage",
+    review_package: "Review package",
+    user_defined_extraction: "User-defined fields",
+  };
+  return labels[asset];
 }
 
 function inferSkills(recommendations: ParserRecommendation[]): string[] {

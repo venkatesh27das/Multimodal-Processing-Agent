@@ -284,18 +284,41 @@ function buildOutputContract(
   objective: ParseObjective,
   configuration: ParseConfiguration,
 ): Record<string, unknown> {
+  const assets = new Set(configuration.selectedAssets);
+  const wantsTables = assets.has("tables") || configuration.tableStructureDetection || objective === "structured";
+  const wantsChunks = assets.has("chunks") || assets.has("vectors");
+  const wantsVectors = assets.has("vectors") || configuration.generateEmbeddings;
+  const wantsEntities =
+    assets.has("entities") ||
+    assets.has("relationships") ||
+    assets.has("knowledge_graph") ||
+    objective === "graph" ||
+    objective === "structured";
+  const wantsRelationships =
+    assets.has("relationships") ||
+    assets.has("knowledge_graph") ||
+    objective === "graph";
   return {
     parsed_text: true,
     metadata: true,
-    sections: true,
-    tables: configuration.tableStructureDetection || objective === "structured",
-    chunks: objective === "search" || configuration.generateEmbeddings,
-    embeddings: configuration.generateEmbeddings,
-    entities: objective === "graph" || objective === "structured",
-    relationships: objective === "graph",
+    sections: assets.has("document_structure"),
+    tables: wantsTables,
+    chunks: objective === "search" || wantsChunks || wantsVectors,
+    embeddings: wantsVectors,
+    entities: wantsEntities,
+    relationships: wantsRelationships,
+    knowledge_graph: assets.has("knowledge_graph"),
+    summary: assets.has("summary"),
+    classification: assets.has("classification"),
+    evidence: assets.has("evidence"),
+    quality_report: assets.has("quality_report"),
+    lineage: assets.has("lineage"),
+    review_package: assets.has("review_package"),
+    user_defined_extraction: assets.has("user_defined_extraction"),
     transcript: objective === "transcript",
     custom_outputs: configuration.customOutputs || null,
     output_preset: configuration.outputPreset,
+    selected_asset_types: configuration.selectedAssets,
   };
 }
 

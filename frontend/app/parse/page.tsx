@@ -23,6 +23,7 @@ import {
   Share2,
   ShieldCheck,
   SlidersHorizontal,
+  Star,
   Table2,
   Timer,
   UserRoundCheck,
@@ -37,6 +38,7 @@ import type { AgentTaskDetail } from "@/api/agent";
 import type {
   JobEvent,
   JobProgress,
+  GeneratedAssetKind,
   ParseConfiguration,
   ParseJob,
   ParseJobRunResponse,
@@ -69,6 +71,29 @@ const objectives: Array<{
   { id: "graph", title: "Graph-ready", description: "Extract entities and relationships.", icon: Share2 },
   { id: "transcript", title: "Audio/Video Transcript", description: "Generate transcripts and summaries.", icon: FileAudio },
   { id: "custom", title: "Custom", description: "Use a custom strategy or configuration.", icon: UserRoundCheck },
+];
+
+const outputAssetOptions: Array<{
+  id: GeneratedAssetKind;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  { id: "parsed_content", label: "Parsed Content", description: "Clean extracted text or transcript.", icon: FileText },
+  { id: "document_structure", label: "Structure", description: "Sections, layout, pages, and blocks.", icon: Layers3 },
+  { id: "tables", label: "Tables", description: "Extracted and normalized tabular data.", icon: Table2 },
+  { id: "chunks", label: "Chunks", description: "RAG/search-ready content chunks.", icon: FileCheck2 },
+  { id: "vectors", label: "Vectors", description: "Embeddings and vector index metadata.", icon: Network },
+  { id: "entities", label: "Entities", description: "People, companies, dates, money, fields.", icon: UserRoundCheck },
+  { id: "relationships", label: "Relationships", description: "Entity links and extracted relations.", icon: GitBranch },
+  { id: "knowledge_graph", label: "Graph", description: "Nodes, edges, and graph asset payload.", icon: Share2 },
+  { id: "summary", label: "Summary", description: "Summary and key points.", icon: FileAudio },
+  { id: "classification", label: "Classification", description: "Document class and parser route.", icon: SlidersHorizontal },
+  { id: "evidence", label: "Evidence", description: "Source spans and traceable locators.", icon: ShieldCheck },
+  { id: "quality_report", label: "Quality", description: "Confidence and validation report.", icon: Star },
+  { id: "lineage", label: "Lineage", description: "Source, parser, skill, and artifact chain.", icon: GitBranch },
+  { id: "review_package", label: "Review Package", description: "Fields and rationale for human review.", icon: CheckCircle2 },
+  { id: "user_defined_extraction", label: "User Fields", description: "Custom fields from schema or prompt.", icon: Settings2 },
 ];
 
 const supportedFormats = ["PDF", "DOCX", "PPTX", "XLSX", "TXT", "PNG", "JPG", "MP3", "MP4"];
@@ -345,6 +370,23 @@ function ConfigureState({
   planError: string | null;
   planning: boolean;
 }) {
+  function toggleAsset(asset: GeneratedAssetKind) {
+    const selected = new Set(configuration.selectedAssets);
+    if (selected.has(asset)) {
+      selected.delete(asset);
+    } else {
+      selected.add(asset);
+    }
+    const nextAssets = outputAssetOptions
+      .map((option) => option.id)
+      .filter((assetId) => selected.has(assetId));
+    onUpdateConfiguration({
+      selectedAssets: nextAssets,
+      tableStructureDetection: nextAssets.includes("tables"),
+      generateEmbeddings: nextAssets.includes("vectors"),
+    });
+  }
+
   return (
     <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
@@ -372,6 +414,26 @@ function ConfigureState({
           />
           {planError ? <ErrorBox message={planError} /> : null}
           <RecommendationTable files={files} planning={planning} recommendations={plan?.recommendations ?? []} />
+        </Card>
+
+        <Card className="p-4">
+          <SectionHeader
+            title="Output assets"
+            description="Choose the concrete assets the parser agent should generate for this run."
+            action={<span className="text-xs font-bold text-muted">{configuration.selectedAssets.length} selected</span>}
+          />
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {outputAssetOptions.map((asset) => (
+              <AssetOptionButton
+                key={asset.id}
+                active={configuration.selectedAssets.includes(asset.id)}
+                description={asset.description}
+                icon={asset.icon}
+                label={asset.label}
+                onClick={() => toggleAsset(asset.id)}
+              />
+            ))}
+          </div>
         </Card>
 
         <Card className="p-4">
@@ -431,8 +493,8 @@ function ConfigureState({
               />
               <ToggleRow
                 label="Enable table structure detection"
-                checked={configuration.tableStructureDetection}
-                onClick={() => onUpdateConfiguration({ tableStructureDetection: !configuration.tableStructureDetection })}
+                checked={configuration.selectedAssets.includes("tables")}
+                onClick={() => toggleAsset("tables")}
               />
               <TextField
                 label="Preferred parser override"
@@ -442,8 +504,8 @@ function ConfigureState({
               />
               <ToggleRow
                 label="Generate embeddings"
-                checked={configuration.generateEmbeddings}
-                onClick={() => onUpdateConfiguration({ generateEmbeddings: !configuration.generateEmbeddings })}
+                checked={configuration.selectedAssets.includes("vectors")}
+                onClick={() => toggleAsset("vectors")}
               />
               <TextField
                 label="Skill override"
@@ -626,6 +688,7 @@ function ReviewState({
           <RunConfig label="Workspace" value="Enterprise Workspace" />
           <RunConfig label="Data residency" value="US (Texas)" />
           <RunConfig label="Parsing mode" value={configuration.latencyProfile === "batch" ? "Batch" : "Standard"} />
+          <RunConfig label="Output assets" value={`${configuration.selectedAssets.length} selected`} />
           <RunConfig label="Language" value="English" />
           <RunConfig label="Concurrency" value={`${files.length} files`} />
           <RunConfig label="Notifications" value="In-app & Email" />
@@ -659,6 +722,9 @@ function RunningState({
   progress: JobProgress;
 }) {
   const firstJob = jobRuns[0]?.job;
+  const expectedAssets = Array.from(
+    new Set(jobRuns.flatMap((run) => run.plan.expected_assets ?? [])),
+  );
   const activity = events.length ? events : jobRuns.map((run) => ({
     id: run.job.id,
     jobId: run.job.id,
@@ -787,6 +853,29 @@ function RunningState({
               <SummaryMetric icon={Timer} label="Elapsed Time" value="00:00:15" detail="Since run start" tone="success" />
               <SummaryMetric icon={Timer} label="Estimated Completion" value={estimatedCompletion(false)} detail="Local time" tone="purple" />
             </div>
+          </Card>
+          <Card className="p-4">
+            <SectionHeader
+              title="Output assets"
+              description="Assets requested for this parser-agent run."
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(expectedAssets.length ? expectedAssets : ["Awaiting asset plan"]).map((asset) => (
+                <Tag key={asset} tone={expectedAssets.length ? "info" : undefined}>{asset}</Tag>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted">
+              Open the run detail to inspect generated counts, previews, lineage, and evidence.
+            </p>
+            {firstJob?.id ? (
+              <Link href={`/jobs/${firstJob.id}`} className="mt-3 flex items-center justify-between rounded-lg border border-border p-3 text-sm hover:bg-surface">
+                <span>
+                  <span className="block font-bold text-ink">View Generated Assets</span>
+                  <span className="text-xs text-muted">Open this run asset bundle</span>
+                </span>
+                <ArrowRight className="h-4 w-4 text-muted" />
+              </Link>
+            ) : null}
           </Card>
           <Card className="p-4">
             <SectionHeader title="Next destinations" description="You can monitor or review results as the run progresses." />
@@ -972,6 +1061,40 @@ function ObjectiveButton({
       </div>
       <p className="mt-4 text-sm font-bold text-ink">{title}</p>
       <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+    </button>
+  );
+}
+
+function AssetOptionButton({
+  active,
+  description,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  description: string;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`flex h-full min-h-[82px] items-start gap-3 rounded-md border p-3 text-left transition ${
+        active
+          ? "border-accent bg-accent-soft text-accent shadow-panel"
+          : "border-border bg-white text-ink hover:border-accent/60 hover:bg-surface"
+      }`}
+      type="button"
+      onClick={onClick}
+    >
+      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-md ${active ? "bg-accent text-white" : "bg-surface text-muted"}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold">{label}</span>
+        <span className="mt-1 block text-xs leading-5 text-muted">{description}</span>
+      </span>
     </button>
   );
 }

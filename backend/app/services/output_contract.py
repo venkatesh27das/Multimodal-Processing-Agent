@@ -1,5 +1,8 @@
 import re
+from collections import Counter
 from hashlib import sha256
+from itertools import combinations
+from math import sqrt
 
 from backend.app.core.config import settings
 from backend.app.models.domain import (
@@ -79,6 +82,8 @@ class ChunkingService:
 
 
 class MockEmbeddingService:
+    local_dimensions = 128
+
     def embed_chunks(self, chunks: list[dict[str, object]]) -> list[dict[str, object]]:
         if settings.lm_studio_embedding_enabled and chunks:
             embeddings = self._embed_with_lm_studio(chunks)
@@ -91,12 +96,13 @@ class MockEmbeddingService:
             embeddings.append(
                 {
                     "chunk_id": chunk["chunk_id"],
-                    "model": "mock-embedding-v0",
-                    "dimensions": 8,
+                    "model": "local-hashing-embedding-v1",
+                    "dimensions": self.local_dimensions,
                     "vector": self._deterministic_vector(text),
                     "index_policy": {
                         "metric": "cosine",
-                        "intended_use": "local_semantic_search_placeholder",
+                        "intended_use": "local_semantic_search",
+                        "provider": "local_hashing",
                     },
                 }
             )
@@ -121,8 +127,19 @@ class MockEmbeddingService:
         }
 
     def _deterministic_vector(self, text: str) -> list[float]:
-        digest = sha256(text.encode("utf-8")).digest()
-        return [round(byte / 255, 6) for byte in digest[:8]]
+        vector = [0.0] * self.local_dimensions
+        tokens = re.findall(r"[A-Za-z0-9_]+", text.lower())
+        if not tokens:
+            return vector
+
+        for token in tokens:
+            digest = sha256(token.encode("utf-8")).digest()
+            index = int.from_bytes(digest[:2], "big") % self.local_dimensions
+            sign = 1.0 if digest[2] % 2 == 0 else -1.0
+            vector[index] += sign
+
+        magnitude = sqrt(sum(value * value for value in vector)) or 1.0
+        return [round(value / magnitude, 6) for value in vector]
 
     def _embed_with_lm_studio(
         self, chunks: list[dict[str, object]]
@@ -199,6 +216,12 @@ class EntityExtractor:
                         else "rule_based",
                     }
                 )
+        self._extract_requested_fields(
+            text,
+            requested_entities=requested_entities or [],
+            entities=entities,
+            seen=seen,
+        )
         return entities
 
     def _patterns(self, requested_entities: list[str] | None) -> list[tuple[str, str]]:
@@ -220,6 +243,48 @@ class EntityExtractor:
             ]
         )
         return patterns
+
+    def _extract_requested_fields(
+        self,
+        text: str,
+        *,
+        requested_entities: list[str],
+        entities: list[dict[str, object]],
+        seen: set[tuple[str, str, int]],
+    ) -> None:
+        for entity_type in requested_entities:
+            if entity_type in COMMON_ENTITY_PATTERNS:
+                continue
+            labels = self._field_labels(entity_type)
+            for label in labels:
+                pattern = rf"\b{re.escape(label)}\b\s*(?:[:=\-]|is|was|as)\s*([^\n.;,|]{{2,120}})"
+                for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                    value = match.group(1).strip(" \t:-")
+                    if not value:
+                        continue
+                    key = (entity_type, value.lower(), match.start(1))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    entities.append(
+                        {
+                            "entity_id": f"entity-{len(entities)}",
+                            "text": value,
+                            "type": entity_type,
+                            "field_label": label,
+                            "start_char": match.start(1),
+                            "end_char": match.end(1),
+                            "confidence": 0.68,
+                            "source": "user_defined_pattern",
+                        }
+                    )
+
+    def _field_labels(self, entity_type: str) -> list[str]:
+        normalized = entity_type.replace("_", " ").strip()
+        labels = {entity_type, normalized, normalized.title()}
+        if normalized.endswith(" id"):
+            labels.add(normalized.replace(" id", " identifier"))
+        return [label for label in labels if label]
 
     def _confidence(self, entity_type: str) -> float:
         if entity_type in COMMON_ENTITY_PATTERNS:
@@ -246,15 +311,20 @@ class RelationshipExtractor:
                 for entity in entities
                 if start <= int(entity.get("start_char", -1)) < end
             ]
-            for left, right in zip(in_chunk, in_chunk[1:], strict=False):
+            for left, right in combinations(in_chunk[:12], 2):
+                distance = abs(int(right.get("start_char", 0)) - int(left.get("end_char", 0)))
+                if distance > 600:
+                    continue
                 relationships.append(
                     {
                         "relationship_id": f"relationship-{len(relationships)}",
                         "source_entity_id": left["entity_id"],
                         "target_entity_id": right["entity_id"],
                         "type": self._relationship_type(left, right),
-                        "confidence": 0.52,
+                        "confidence": self._relationship_confidence(left, right, distance),
                         "evidence_chunk_id": chunk.get("chunk_id"),
+                        "distance_chars": distance,
+                        "source": "entity_window_inference",
                     }
                 )
         return relationships
@@ -300,7 +370,32 @@ class RelationshipExtractor:
             "percentage",
         }:
             return "has_value"
+        if right.get("type") == "organization_or_title" and left.get("type") in {
+            "date",
+            "money",
+            "percentage",
+        }:
+            return "has_value"
+        if left.get("type") == "date" and right.get("type") == "money":
+            return "dated_amount"
+        if left.get("type") == "money" and right.get("type") == "date":
+            return "dated_amount"
+        if (
+            left.get("source") == "user_defined_pattern"
+            or right.get("source") == "user_defined_pattern"
+        ):
+            return "same_field_context"
         return "co_occurs_with"
+
+    def _relationship_confidence(
+        self,
+        left: dict[str, object],
+        right: dict[str, object],
+        distance: int,
+    ) -> float:
+        base = 0.74 if self._relationship_type(left, right) != "co_occurs_with" else 0.58
+        distance_penalty = min(0.18, distance / 4000)
+        return round(max(0.45, base - distance_penalty), 2)
 
 
 class OutputContractBuilder:
@@ -321,32 +416,73 @@ class OutputContractBuilder:
 
         parsed_text = payload.get("parsed_text")
         parsed_text = parsed_text if isinstance(parsed_text, str) else None
+        selected_assets = self._selected_assets(plan.output_contract)
         requested_entities = self._requested_entities(plan.output_contract)
-        chunks = chunking_service.chunk_text(parsed_text)
-        embeddings = embedding_service.embed_chunks(chunks)
-        entities = entity_extractor.extract(parsed_text, requested_entities=requested_entities)
-        relationships = relationship_extractor.extract(entities, chunks)
-        evidence_spans = self._build_evidence_spans(chunks, file_record=file_record)
-        tables = self._list_payload(payload, "tables")
+        needs_chunks = bool(
+            selected_assets
+            & {"chunks", "vectors", "evidence", "summary", "relationships", "knowledge_graph"}
+        )
+        needs_entities = bool(
+            selected_assets
+            & {"entities", "relationships", "knowledge_graph", "user_defined_extraction"}
+        )
+        chunks = chunking_service.chunk_text(parsed_text) if needs_chunks else []
+        embeddings = embedding_service.embed_chunks(chunks) if "vectors" in selected_assets else []
+        entities = (
+            entity_extractor.extract(parsed_text, requested_entities=requested_entities)
+            if needs_entities
+            else []
+        )
+        relationships = (
+            relationship_extractor.extract(entities, chunks)
+            if selected_assets & {"relationships", "knowledge_graph"}
+            else []
+        )
+        user_defined_matches = [
+            entity for entity in entities if entity.get("type") in set(requested_entities)
+        ]
+        evidence_spans = (
+            self._build_evidence_spans(chunks, file_record=file_record)
+            if "evidence" in selected_assets
+            else []
+        )
+        tables = self._list_payload(payload, "tables") if "tables" in selected_assets else []
         layout_blocks = self._list_payload(payload, "layout_blocks")
         image_descriptions = self._list_payload(payload, "image_descriptions")
         audio_transcript = self._optional_string(payload, "audio_transcript")
         video_transcript = self._optional_string(payload, "video_transcript")
-        quality_asset = self._quality_asset(quality_report)
-        lineage_asset = self._lineage_asset(
-            plan=plan,
-            execution_result=execution_result,
-            file_record=file_record,
+        quality_asset = (
+            self._quality_asset(quality_report)
+            if "quality_report" in selected_assets
+            else {}
         )
-        summary_asset = self._summary_asset(parsed_text, chunks)
-        classification_asset = self._classification_asset(
-            file_record=file_record,
-            plan=plan,
-            payload=payload,
+        lineage_asset = (
+            self._lineage_asset(
+                plan=plan,
+                execution_result=execution_result,
+                file_record=file_record,
+            )
+            if "lineage" in selected_assets
+            else {}
+        )
+        summary_asset = (
+            self._summary_asset(parsed_text, chunks)
+            if "summary" in selected_assets
+            else {}
+        )
+        classification_asset = (
+            self._classification_asset(
+                file_record=file_record,
+                plan=plan,
+                payload=payload,
+            )
+            if "classification" in selected_assets
+            else {}
         )
         vector_asset = embedding_service.vector_asset(embeddings)
         graph_asset = relationship_extractor.graph_asset(entities, relationships)
         asset_manifest = self._asset_manifest(
+            selected_assets=selected_assets,
             parsed_text=parsed_text,
             chunks=chunks,
             embeddings=embeddings,
@@ -360,6 +496,7 @@ class OutputContractBuilder:
             summary_asset=summary_asset,
             classification_asset=classification_asset,
             requested_entities=requested_entities,
+            user_defined_matches=user_defined_matches,
         )
 
         structured_data = {
@@ -382,14 +519,20 @@ class OutputContractBuilder:
                 "asset_kind": "evidence_map",
                 "evidence_spans": evidence_spans,
             },
+            "review_package_asset": {
+                "asset_kind": "review_package",
+                "human_review_required": quality_report.human_review_required,
+                "rationale": quality_report.quality_explanation,
+                "uncertain_fields": [
+                    entity
+                    for entity in entities
+                    if float(entity.get("confidence", 1.0)) < 0.7
+                ],
+            },
             "user_defined_extraction_asset": {
                 "asset_kind": "user_defined_extraction",
                 "requested_entities": requested_entities,
-                "matched_entities": [
-                    entity
-                    for entity in entities
-                    if entity.get("type") in set(requested_entities)
-                ],
+                "matched_entities": user_defined_matches,
             },
         }
 
@@ -404,7 +547,7 @@ class OutputContractBuilder:
                 "checksum_sha256": file_record.checksum_sha256,
                 "generated_asset_count": len(asset_manifest),
             },
-            "parsed_text": parsed_text,
+            "parsed_text": parsed_text if "parsed_content" in selected_assets else None,
             "layout_blocks": layout_blocks,
             "tables": tables,
             "image_descriptions": image_descriptions,
@@ -486,6 +629,28 @@ class OutputContractBuilder:
             return requested
         return []
 
+    def _selected_assets(self, output_contract: dict[str, object]) -> set[str]:
+        values = output_contract.get("selected_asset_types")
+        if isinstance(values, list) and values:
+            return {str(value) for value in values if str(value).strip()}
+        return {
+            "parsed_content",
+            "document_structure",
+            "tables",
+            "chunks",
+            "vectors",
+            "entities",
+            "relationships",
+            "knowledge_graph",
+            "summary",
+            "classification",
+            "evidence",
+            "quality_report",
+            "lineage",
+            "review_package",
+            "user_defined_extraction",
+        }
+
     def _summary_asset(
         self,
         parsed_text: str | None,
@@ -503,13 +668,51 @@ class OutputContractBuilder:
             for sentence in re.split(r"(?<=[.!?])\s+", parsed_text)
             if sentence.strip()
         ]
-        key_points = sentences[:5] if sentences else [parsed_text[:240]]
+        key_points = self._rank_sentences(sentences) if sentences else [parsed_text[:240]]
         return {
             "asset_kind": "summary",
             "summary": key_points[0][:500],
             "key_points": key_points,
+            "method": "ranked_extractive",
             "source_chunk_ids": [chunk["chunk_id"] for chunk in chunks[:5]],
         }
+
+    def _rank_sentences(self, sentences: list[str]) -> list[str]:
+        stop_words = {
+            "a",
+            "an",
+            "and",
+            "are",
+            "as",
+            "at",
+            "be",
+            "by",
+            "for",
+            "from",
+            "in",
+            "is",
+            "it",
+            "of",
+            "on",
+            "or",
+            "that",
+            "the",
+            "to",
+            "with",
+        }
+        term_counts = Counter(
+            token
+            for sentence in sentences
+            for token in re.findall(r"[A-Za-z0-9_]+", sentence.lower())
+            if token not in stop_words and len(token) > 2
+        )
+        scored = []
+        for index, sentence in enumerate(sentences):
+            tokens = re.findall(r"[A-Za-z0-9_]+", sentence.lower())
+            score = sum(term_counts[token] for token in tokens) / max(1, len(tokens))
+            scored.append((score, -index, sentence))
+        ranked = [sentence for _, _, sentence in sorted(scored, reverse=True)[:5]]
+        return ranked or sentences[:5]
 
     def _classification_asset(
         self,
@@ -574,6 +777,7 @@ class OutputContractBuilder:
     def _asset_manifest(
         self,
         *,
+        selected_assets: set[str],
         parsed_text: str | None,
         chunks: list[dict[str, object]],
         embeddings: list[dict[str, object]],
@@ -587,28 +791,57 @@ class OutputContractBuilder:
         summary_asset: dict[str, object],
         classification_asset: dict[str, object],
         requested_entities: list[str],
+        user_defined_matches: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        manifest = [
-            self._manifest_item("parsed_content", bool(parsed_text), len(parsed_text or "")),
-            self._manifest_item("document_structure", True, 1),
-            self._manifest_item("chunks", bool(chunks), len(chunks)),
-            self._manifest_item("vectors", bool(embeddings), len(embeddings)),
-            self._manifest_item("entities", bool(entities), len(entities)),
-            self._manifest_item("relationships", bool(relationships), len(relationships)),
-            self._manifest_item("knowledge_graph", bool(entities), len(relationships)),
-            self._manifest_item("evidence", bool(evidence_spans), len(evidence_spans)),
-            self._manifest_item("quality_report", True, 1),
-            self._manifest_item("lineage", True, 1),
-            self._manifest_item("summary", bool(summary_asset), 1),
-            self._manifest_item("classification", bool(classification_asset), 1),
-            self._manifest_item(
-                "user_defined_extraction",
-                bool(requested_entities),
-                len(requested_entities),
-            ),
-        ]
-        if tables:
-            manifest.append(self._manifest_item("tables", True, len(tables)))
+        manifest: list[dict[str, object]] = []
+        if "parsed_content" in selected_assets:
+            manifest.append(
+                self._manifest_item("parsed_content", bool(parsed_text), len(parsed_text or "")),
+            )
+        if "document_structure" in selected_assets:
+            manifest.append(self._manifest_item("document_structure", True, 1))
+        if "chunks" in selected_assets:
+            manifest.append(self._manifest_item("chunks", bool(chunks), len(chunks)))
+        if "vectors" in selected_assets:
+            manifest.append(self._manifest_item("vectors", bool(embeddings), len(embeddings)))
+        if "entities" in selected_assets:
+            manifest.append(self._manifest_item("entities", bool(entities), len(entities)))
+        if "relationships" in selected_assets:
+            manifest.append(
+                self._manifest_item(
+                    "relationships",
+                    bool(relationships),
+                    len(relationships),
+                ),
+            )
+        if "knowledge_graph" in selected_assets:
+            manifest.append(
+                self._manifest_item("knowledge_graph", bool(entities), len(relationships)),
+            )
+        if "evidence" in selected_assets:
+            manifest.append(
+                self._manifest_item("evidence", bool(evidence_spans), len(evidence_spans)),
+            )
+        if "quality_report" in selected_assets:
+            manifest.append(self._manifest_item("quality_report", True, 1))
+        if "lineage" in selected_assets:
+            manifest.append(self._manifest_item("lineage", True, 1))
+        if "summary" in selected_assets:
+            manifest.append(self._manifest_item("summary", bool(summary_asset), 1))
+        if "classification" in selected_assets:
+            manifest.append(self._manifest_item("classification", bool(classification_asset), 1))
+        if "review_package" in selected_assets:
+            manifest.append(self._manifest_item("review_package", True, 1))
+        if "user_defined_extraction" in selected_assets:
+            manifest.append(
+                self._manifest_item(
+                    "user_defined_extraction",
+                    bool(user_defined_matches),
+                    len(user_defined_matches),
+                ),
+            )
+        if "tables" in selected_assets:
+            manifest.append(self._manifest_item("tables", bool(tables), len(tables)))
         if image_descriptions:
             manifest.append(
                 self._manifest_item("image_understanding", True, len(image_descriptions)),

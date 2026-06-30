@@ -10,6 +10,7 @@ import {
 import type { UploadedFile } from "@/api/files";
 import {
   createParsingPlan,
+  defaultAssetsForObjective,
   defaultParseConfiguration,
   deriveJobProgress,
   jobsApi,
@@ -52,6 +53,21 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
 
   const updateConfiguration = useCallback((patch: Partial<ParseConfiguration>) => {
     setConfiguration((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const updateObjective = useCallback((nextObjective: ParseObjective) => {
+    setObjective(nextObjective);
+    setConfiguration((current) => ({
+      ...current,
+      outputPreset: nextObjective === "search" || nextObjective === "graph"
+        ? nextObjective
+        : nextObjective === "structured"
+          ? "structured"
+          : current.outputPreset,
+      tableStructureDetection: nextObjective === "structured" || current.tableStructureDetection,
+      generateEmbeddings: nextObjective === "search" || current.generateEmbeddings,
+      selectedAssets: defaultAssetsForObjective(nextObjective),
+    }));
   }, []);
 
   const computePlan = useCallback(async () => {
@@ -264,7 +280,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     progress,
     events,
     toast,
-    setObjective,
+    setObjective: updateObjective,
     updateConfiguration,
     computePlan,
     goToConfigure,
