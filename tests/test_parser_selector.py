@@ -176,6 +176,59 @@ def test_requested_table_contract_infers_table_skill() -> None:
     assert decision.selected_skill_id == "table_normalization"
 
 
+def test_preferred_parser_override_selects_available_parser() -> None:
+    db = make_session()
+    profile = make_profile(
+        file_type=FileType.PDF,
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+
+    decision = parser_selector.plan(
+        db,
+        file_profile=profile,
+        requested_output_contract={},
+        quality_target=QualityTarget.BALANCED,
+        cost_profile=CostProfile.BALANCED,
+        latency_profile=LatencyProfile.INTERACTIVE,
+        governance_constraints={"preferred_parser_id": "azure_document_intelligence"},
+    )
+
+    assert decision.primary_parser_id == "azure_document_intelligence"
+
+
+def test_instruction_enriched_contract_infers_invoice_skill_before_table_skill() -> None:
+    from backend.app.services.agent_instruction_interpreter import agent_instruction_interpreter
+
+    db = make_session()
+    profile = make_profile(
+        file_type=FileType.PDF,
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+    contract, _, interpretation = agent_instruction_interpreter.enrich(
+        requested_output_contract={},
+        governance_constraints={},
+        agent_instruction="Validate invoice fields and extract line item tables.",
+    )
+
+    decision = parser_selector.plan(
+        db,
+        file_profile=profile,
+        requested_output_contract=contract,
+        quality_target=QualityTarget.BALANCED,
+        cost_profile=CostProfile.BALANCED,
+        latency_profile=LatencyProfile.INTERACTIVE,
+        governance_constraints={},
+        agent_interpretation=interpretation.to_dict() if interpretation else {},
+    )
+
+    assert decision.selected_skill_id == "invoice_extraction"
+    assert decision.agent_interpretation["inferred_objective"] == "structured"
+
+
 def test_governance_constraints_penalize_external_services() -> None:
     db = make_session()
     profile = make_profile(
@@ -263,6 +316,7 @@ def test_jobs_plan_api_returns_parser_selection() -> None:
                 "/api/v1/jobs/plan",
                 json={
                     "file_id": file_record.id,
+                    "agent_instruction": "Extract all tables and prepare search-ready chunks.",
                     "requested_output_contract": {},
                     "quality_target": "balanced",
                     "cost_profile": "balanced",
@@ -271,7 +325,11 @@ def test_jobs_plan_api_returns_parser_selection() -> None:
                 },
             )
             assert response.status_code == 200
-            assert response.json()["primary_parser_id"] == "pdf_native_text"
+            payload = response.json()
+            assert payload["primary_parser_id"] == "pdf_native_text"
+            assert payload["selected_skill_id"] == "table_normalization"
+            assert payload["agent_interpretation"]["inferred_objective"] == "search"
+            assert "chunks" in payload["agent_interpretation"]["inferred_outputs"]
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()

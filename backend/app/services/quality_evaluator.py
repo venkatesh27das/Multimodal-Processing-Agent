@@ -13,12 +13,13 @@ class QualityEvaluator:
         execution_result: ParserExecutionResult,
         threshold: float,
         final: bool = False,
+        route_to_review: bool = True,
     ) -> QualityReport:
         confidence = execution_result.confidence_score or 0.0
         failed = execution_result.status == JobStatus.FAILED.value
         passed = confidence >= threshold and not failed
         quality_status = QualityStatus.PASSED if passed else QualityStatus.FALLBACK_REQUIRED
-        if final and not passed:
+        if final and not passed and (route_to_review or failed):
             quality_status = QualityStatus.REVIEW_REQUIRED
 
         report = QualityReport(
@@ -41,4 +42,3 @@ class QualityEvaluator:
 
 
 quality_evaluator = QualityEvaluator()
-

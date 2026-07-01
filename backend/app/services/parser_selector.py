@@ -78,6 +78,7 @@ class ParserSelector:
         cost_profile: CostProfile,
         latency_profile: LatencyProfile,
         governance_constraints: dict[str, object],
+        agent_interpretation: dict[str, object] | None = None,
     ) -> ParserSelectionResponse:
         candidates = parser_registry.find_candidate_parsers(db, file_profile)
         candidates = self._augment_candidates_for_selection(db, file_profile, candidates)
@@ -98,7 +99,12 @@ class ParserSelector:
         ]
         scored.sort(key=lambda item: item.breakdown.total_score, reverse=True)
 
-        primary = self._choose_primary(file_profile, scored, quality_target)
+        primary = self._choose_primary(
+            file_profile,
+            scored,
+            quality_target,
+            governance_constraints,
+        )
         fallback = self._choose_fallback(
             db,
             primary.parser,
@@ -124,6 +130,7 @@ class ParserSelector:
                 skill_id=skill_id,
             ),
             score_breakdown=[item.breakdown for item in scored],
+            agent_interpretation=agent_interpretation or {},
         )
 
     def _augment_candidates_for_selection(
@@ -244,9 +251,13 @@ class ParserSelector:
         file_profile: FileProfile,
         scored: list[ScoredParser],
         quality_target: QualityTarget,
+        governance_constraints: dict[str, object],
     ) -> ScoredParser:
         by_id = {item.parser.parser_id: item for item in scored}
         file_type = FileType(file_profile.file_type)
+        preferred_parser_id = governance_constraints.get("preferred_parser_id")
+        if isinstance(preferred_parser_id, str) and preferred_parser_id in by_id:
+            return by_id[preferred_parser_id]
 
         if file_type == FileType.PDF:
             if file_profile.is_scanned:
@@ -278,6 +289,12 @@ class ParserSelector:
         file_profile: FileProfile,
         governance_constraints: dict[str, object],
     ) -> ParserDefinition | None:
+        if governance_constraints.get("fallback_policy") == "none":
+            return None
+        max_attempts = governance_constraints.get("max_fallback_attempts")
+        if isinstance(max_attempts, int) and max_attempts <= 0:
+            return None
+
         scored_by_id = {
             item.parser.parser_id: item.parser
             for item in scored
@@ -349,12 +366,14 @@ class ParserSelector:
         if isinstance(requested_skill, str) and db.get(SkillDefinition, requested_skill):
             return requested_skill
 
-        if requested_output_contract.get("tables") is True:
-            return self._first_enabled_skill(db, "table_normalization")
-        if requested_output_contract.get("knowledge_graph") is True:
-            return self._first_enabled_skill(db, "knowledge_graph_preparation")
         if requested_output_contract.get("invoice") is True:
             return self._first_enabled_skill(db, "invoice_extraction")
+        if requested_output_contract.get("contract") is True:
+            return self._first_enabled_skill(db, "contract_parsing")
+        if requested_output_contract.get("knowledge_graph") is True:
+            return self._first_enabled_skill(db, "knowledge_graph_preparation")
+        if requested_output_contract.get("tables") is True:
+            return self._first_enabled_skill(db, "table_normalization")
 
         file_type = FileType(file_profile.file_type)
         if file_type in {FileType.AUDIO, FileType.VIDEO}:

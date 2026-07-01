@@ -29,6 +29,7 @@ class ChunkingService:
         *,
         chunk_size: int = 600,
         overlap: int = 80,
+        strategy: str = "semantic_window",
     ) -> list[dict[str, object]]:
         if not text:
             return []
@@ -56,7 +57,7 @@ class ChunkingService:
                     "token_estimate": max(1, len(chunk_text.split())),
                     "content_hash": sha256(chunk_text.encode("utf-8")).hexdigest(),
                     "metadata": {
-                        "strategy": "semantic_window",
+                        "strategy": strategy,
                         "chunk_size": chunk_size,
                         "overlap": overlap,
                     },
@@ -426,7 +427,16 @@ class OutputContractBuilder:
             selected_assets
             & {"entities", "relationships", "knowledge_graph", "user_defined_extraction"}
         )
-        chunks = chunking_service.chunk_text(parsed_text) if needs_chunks else []
+        chunks = (
+            chunking_service.chunk_text(
+                parsed_text,
+                chunk_size=self._int_contract_value(plan.output_contract, "max_chunk_size", 600),
+                overlap=self._int_contract_value(plan.output_contract, "chunk_overlap", 80),
+                strategy=str(plan.output_contract.get("chunking_strategy") or "semantic_window"),
+            )
+            if needs_chunks
+            else []
+        )
         embeddings = embedding_service.embed_chunks(chunks) if "vectors" in selected_assets else []
         entities = (
             entity_extractor.extract(parsed_text, requested_entities=requested_entities)
@@ -650,6 +660,19 @@ class OutputContractBuilder:
             "review_package",
             "user_defined_extraction",
         }
+
+    def _int_contract_value(
+        self,
+        output_contract: dict[str, object],
+        key: str,
+        default: int,
+    ) -> int:
+        value = output_contract.get(key)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        return default
 
     def _summary_asset(
         self,

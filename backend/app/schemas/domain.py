@@ -177,6 +177,7 @@ class ParseJobCreate(APIModel):
 
 class ParserSelectionRequest(APIModel):
     file_id: str
+    agent_instruction: str | None = None
     requested_output_contract: dict[str, object] = Field(default_factory=dict)
     quality_target: QualityTarget = QualityTarget.BALANCED
     cost_profile: CostProfile = CostProfile.BALANCED
@@ -203,6 +204,7 @@ class ParserSelectionResponse(APIModel):
     decision_score: float
     decision_explanation: str
     score_breakdown: list[ParserScoreBreakdown]
+    agent_interpretation: dict[str, object] = Field(default_factory=dict)
 
 
 class ParseJobRunResponse(APIModel):

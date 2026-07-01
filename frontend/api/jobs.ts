@@ -123,7 +123,7 @@ export type GeneratedAssetKind =
   | "user_defined_extraction";
 
 export type ParseConfiguration = {
-  outputPreset: "balanced" | "text_structure" | "structured" | "search" | "graph";
+  outputPreset: "balanced" | "text_structure" | "structured" | "search" | "graph" | "custom";
   qualityTarget: QualityTarget;
   costProfile: CostProfile;
   latencyProfile: LatencyProfile;
@@ -132,10 +132,30 @@ export type ParseConfiguration = {
   preferredParserOverride: string;
   skillOverride: string;
   fallbackPolicy: "recommended" | "none" | "aggressive";
+  maxFallbackAttempts: number;
   ocrImageHandling: "auto" | "force_ocr" | "native_only";
+  imageQualityCheck: "auto" | "strict" | "disabled";
+  imageChartUnderstanding: boolean;
   tableStructureDetection: boolean;
   generateEmbeddings: boolean;
+  chunkingStrategy: "auto_layout" | "fixed_size" | "section_aware";
+  maxChunkSize: number;
+  chunkOverlap: number;
   sensitivityHandling: "auto_mask" | "detect_only" | "none";
+  redactionConfidenceThreshold: number;
+  phiHandling: "mask_tokenize" | "mask_only" | "disabled";
+  auditSensitiveDetections: boolean;
+  qualityThreshold: number;
+  routeBelowThresholdToReview: boolean;
+  humanReviewQueue: string;
+  autoApproveAboveThreshold: boolean;
+  processingPriority: "normal" | "high" | "batch";
+  maxProcessingTimePerFileMinutes: number;
+  parallelProcessing: boolean;
+  maxParallelFiles: number;
+  concurrencyLimit: "auto" | "1" | "2" | "5" | "10";
+  retryFailedFiles: boolean;
+  retryAttempts: number;
   selectedAssets: GeneratedAssetKind[];
 };
 
@@ -149,6 +169,7 @@ export type ParserRecommendation = {
   selectedSkillId: string | null;
   decisionScore: number;
   decisionExplanation: string;
+  agentInterpretation?: Record<string, unknown>;
 };
 
 export type ParsingPlan = {
@@ -180,6 +201,7 @@ export type ParserSelectionResponse = {
   selected_skill_id: string | null;
   decision_score: number;
   decision_explanation: string;
+  agent_interpretation?: Record<string, unknown>;
   score_breakdown: Array<{
     parser_id: string;
     expected_quality_score: number;
@@ -378,6 +400,7 @@ export const jobsApi = {
     fileType: string,
     objective: ParseObjective,
     configuration: ParseConfiguration,
+    agentInstruction?: string,
   ): Promise<ParserRecommendation> {
     if (USE_MOCKS) {
       return mockRecommendation(fileId, fileName, fileType);
@@ -385,7 +408,7 @@ export const jobsApi = {
 
     const response = await request<ParserSelectionResponse>("/jobs/plan", {
       method: "POST",
-      body: JSON.stringify(buildParserSelectionPayload(fileId, objective, configuration)),
+      body: JSON.stringify(buildParserSelectionPayload(fileId, objective, configuration, agentInstruction)),
     });
     return {
       fileId: response.file_id,
@@ -397,6 +420,7 @@ export const jobsApi = {
       selectedSkillId: response.selected_skill_id,
       decisionScore: response.decision_score,
       decisionExplanation: response.decision_explanation,
+      agentInterpretation: response.agent_interpretation ?? {},
     };
   },
 
@@ -507,10 +531,30 @@ export function defaultParseConfiguration(): ParseConfiguration {
     preferredParserOverride: "",
     skillOverride: "",
     fallbackPolicy: "recommended",
+    maxFallbackAttempts: 2,
     ocrImageHandling: "auto",
+    imageQualityCheck: "auto",
+    imageChartUnderstanding: false,
     tableStructureDetection: true,
     generateEmbeddings: false,
+    chunkingStrategy: "auto_layout",
+    maxChunkSize: 1500,
+    chunkOverlap: 200,
     sensitivityHandling: "auto_mask",
+    redactionConfidenceThreshold: 0.85,
+    phiHandling: "mask_tokenize",
+    auditSensitiveDetections: true,
+    qualityThreshold: 0.85,
+    routeBelowThresholdToReview: true,
+    humanReviewQueue: "default",
+    autoApproveAboveThreshold: false,
+    processingPriority: "normal",
+    maxProcessingTimePerFileMinutes: 15,
+    parallelProcessing: true,
+    maxParallelFiles: 5,
+    concurrencyLimit: "auto",
+    retryFailedFiles: true,
+    retryAttempts: 2,
     selectedAssets: defaultAssetsForObjective("general"),
   };
 }
@@ -604,10 +648,12 @@ function buildParserSelectionPayload(
   fileId: string,
   objective: ParseObjective,
   configuration: ParseConfiguration,
+  agentInstruction?: string,
 ) {
   return {
     file_id: fileId,
-    requested_output_contract: buildOutputContract(objective, configuration),
+    agent_instruction: agentInstruction?.trim() || null,
+    requested_output_contract: buildOutputContract(objective, configuration, agentInstruction),
     quality_target: configuration.qualityTarget,
     cost_profile: configuration.costProfile,
     latency_profile: configuration.latencyProfile,
@@ -615,15 +661,35 @@ function buildParserSelectionPayload(
       external_services_allowed: false,
       human_review_policy: configuration.humanReviewPolicy,
       fallback_policy: configuration.fallbackPolicy,
+      max_fallback_attempts: configuration.maxFallbackAttempts,
       ocr_image_handling: configuration.ocrImageHandling,
+      image_quality_check: configuration.imageQualityCheck,
+      image_chart_understanding: configuration.imageChartUnderstanding,
       sensitivity_handling: configuration.sensitivityHandling,
+      redaction_confidence_threshold: configuration.redactionConfidenceThreshold,
+      phi_handling: configuration.phiHandling,
+      audit_sensitive_detections: configuration.auditSensitiveDetections,
+      route_below_threshold_to_review: configuration.routeBelowThresholdToReview,
+      human_review_queue: configuration.humanReviewQueue,
+      auto_approve_above_threshold: configuration.autoApproveAboveThreshold,
+      processing_priority: configuration.processingPriority,
+      max_processing_time_per_file_minutes: configuration.maxProcessingTimePerFileMinutes,
+      parallel_processing: configuration.parallelProcessing,
+      max_parallel_files: configuration.maxParallelFiles,
+      concurrency_limit: configuration.concurrencyLimit,
+      retry_failed_files: configuration.retryFailedFiles,
+      retry_attempts: configuration.retryAttempts,
       preferred_parser_id: configuration.preferredParserOverride || null,
       skill_id: configuration.skillOverride || null,
     },
   };
 }
 
-function buildOutputContract(objective: ParseObjective, configuration: ParseConfiguration): Record<string, unknown> {
+function buildOutputContract(
+  objective: ParseObjective,
+  configuration: ParseConfiguration,
+  agentInstruction?: string,
+): Record<string, unknown> {
   const assets = new Set(configuration.selectedAssets);
   const wantsTables = assets.has("tables") || configuration.tableStructureDetection || objective === "structured";
   const wantsChunks = assets.has("chunks") || assets.has("vectors");
@@ -638,7 +704,7 @@ function buildOutputContract(objective: ParseObjective, configuration: ParseConf
     assets.has("relationships") ||
     assets.has("knowledge_graph") ||
     objective === "graph";
-  return {
+  const contract: Record<string, unknown> = {
     parsed_text: true,
     metadata: true,
     sections: assets.has("document_structure"),
@@ -659,7 +725,17 @@ function buildOutputContract(objective: ParseObjective, configuration: ParseConf
     custom_outputs: configuration.customOutputs || null,
     output_preset: configuration.outputPreset,
     selected_asset_types: configuration.selectedAssets,
+    chunking_strategy: configuration.chunkingStrategy,
+    max_chunk_size: configuration.maxChunkSize,
+    chunk_overlap: configuration.chunkOverlap,
+    quality_threshold: configuration.qualityThreshold,
   };
+  const trimmedInstruction = agentInstruction?.trim();
+  if (trimmedInstruction) {
+    // TODO: Promote this to a first-class backend planning field once the plan endpoint exposes agent instruction interpretation.
+    contract.agent_instruction = trimmedInstruction;
+  }
+  return contract;
 }
 
 function expectedOutputsFor(configuration: ParseConfiguration): string[] {

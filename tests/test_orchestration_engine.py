@@ -78,16 +78,23 @@ def add_file_with_profile(
     return file_record
 
 
-def run_job(client: TestClient, file_id: str, *, quality_target: str = "balanced"):
+def run_job(
+    client: TestClient,
+    file_id: str,
+    *,
+    governance_constraints: dict[str, object] | None = None,
+    quality_target: str = "balanced",
+    requested_output_contract: dict[str, object] | None = None,
+):
     return client.post(
         "/api/v1/jobs",
         json={
             "file_id": file_id,
-            "requested_output_contract": {},
+            "requested_output_contract": requested_output_contract or {},
             "quality_target": quality_target,
             "cost_profile": "balanced",
             "latency_profile": "interactive",
-            "governance_constraints": {},
+            "governance_constraints": governance_constraints or {},
         },
     )
 
@@ -171,6 +178,81 @@ def test_fallback_triggered_for_low_confidence_image(tmp_path: Path) -> None:
                 .count()
                 == 1
             )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_fallback_policy_none_disables_fallback_execution(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_file_with_profile(
+        db,
+        tmp_path=tmp_path,
+        file_id="image-no-fallback",
+        filename="no-fallback.png",
+        file_type=FileType.IMAGE,
+        content=b"not-really-an-image",
+        modalities=[Modality.IMAGE],
+        has_text_layer=False,
+        is_scanned=True,
+    )
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = run_job(
+                client,
+                file_record.id,
+                governance_constraints={"fallback_policy": "none"},
+            )
+            assert response.status_code == 201
+            job_id = response.json()["job"]["id"]
+            executions = (
+                db.query(ParserExecutionResult)
+                .filter(ParserExecutionResult.job_id == job_id)
+                .all()
+            )
+            assert [execution.parser_id for execution in executions] == ["image_ocr"]
+            assert response.json()["assets"][0]["fallback_used"] is False
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_route_below_threshold_to_review_can_be_disabled(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_file_with_profile(
+        db,
+        tmp_path=tmp_path,
+        file_id="html-no-review",
+        filename="no-review.html",
+        file_type=FileType.HTML,
+        content=b"<html><body>Short text</body></html>",
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = run_job(
+                client,
+                file_record.id,
+                requested_output_contract={"quality_threshold": 0.99},
+                governance_constraints={"route_below_threshold_to_review": False},
+            )
+            assert response.status_code == 201
+            payload = response.json()
+            assert payload["job"]["status"] == JobStatus.COMPLETE.value
+            assert payload["review_item"] is None
+            assert payload["quality"]["human_review_required"] is False
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()

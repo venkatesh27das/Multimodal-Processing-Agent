@@ -184,6 +184,7 @@ type CreateAgentTaskRequest = {
   fileIds: string[];
   objective: ParseObjective;
   configuration: ParseConfiguration;
+  agentInstruction?: string;
   title?: string;
 };
 
@@ -214,7 +215,8 @@ export const agentApi = {
       body: JSON.stringify({
         file_ids: payload.fileIds,
         title: payload.title,
-        requested_output_contract: buildOutputContract(payload.objective, payload.configuration),
+        agent_instruction: payload.agentInstruction?.trim() || null,
+        requested_output_contract: buildOutputContract(payload.objective, payload.configuration, payload.agentInstruction),
         quality_target: payload.configuration.qualityTarget satisfies QualityTarget,
         cost_profile: payload.configuration.costProfile satisfies CostProfile,
         latency_profile: payload.configuration.latencyProfile satisfies LatencyProfile,
@@ -273,8 +275,24 @@ function buildGovernanceConstraints(configuration: ParseConfiguration): Record<s
     external_services_allowed: false,
     human_review_policy: configuration.humanReviewPolicy,
     fallback_policy: configuration.fallbackPolicy,
+    max_fallback_attempts: configuration.maxFallbackAttempts,
     ocr_image_handling: configuration.ocrImageHandling,
+    image_quality_check: configuration.imageQualityCheck,
+    image_chart_understanding: configuration.imageChartUnderstanding,
     sensitivity_handling: configuration.sensitivityHandling,
+    redaction_confidence_threshold: configuration.redactionConfidenceThreshold,
+    phi_handling: configuration.phiHandling,
+    audit_sensitive_detections: configuration.auditSensitiveDetections,
+    route_below_threshold_to_review: configuration.routeBelowThresholdToReview,
+    human_review_queue: configuration.humanReviewQueue,
+    auto_approve_above_threshold: configuration.autoApproveAboveThreshold,
+    processing_priority: configuration.processingPriority,
+    max_processing_time_per_file_minutes: configuration.maxProcessingTimePerFileMinutes,
+    parallel_processing: configuration.parallelProcessing,
+    max_parallel_files: configuration.maxParallelFiles,
+    concurrency_limit: configuration.concurrencyLimit,
+    retry_failed_files: configuration.retryFailedFiles,
+    retry_attempts: configuration.retryAttempts,
     preferred_parser_id: configuration.preferredParserOverride || null,
     skill_id: configuration.skillOverride || null,
   };
@@ -283,6 +301,7 @@ function buildGovernanceConstraints(configuration: ParseConfiguration): Record<s
 function buildOutputContract(
   objective: ParseObjective,
   configuration: ParseConfiguration,
+  agentInstruction?: string,
 ): Record<string, unknown> {
   const assets = new Set(configuration.selectedAssets);
   const wantsTables = assets.has("tables") || configuration.tableStructureDetection || objective === "structured";
@@ -298,7 +317,7 @@ function buildOutputContract(
     assets.has("relationships") ||
     assets.has("knowledge_graph") ||
     objective === "graph";
-  return {
+  const contract: Record<string, unknown> = {
     parsed_text: true,
     metadata: true,
     sections: assets.has("document_structure"),
@@ -319,7 +338,17 @@ function buildOutputContract(
     custom_outputs: configuration.customOutputs || null,
     output_preset: configuration.outputPreset,
     selected_asset_types: configuration.selectedAssets,
+    chunking_strategy: configuration.chunkingStrategy,
+    max_chunk_size: configuration.maxChunkSize,
+    chunk_overlap: configuration.chunkOverlap,
+    quality_threshold: configuration.qualityThreshold,
   };
+  const trimmedInstruction = agentInstruction?.trim();
+  if (trimmedInstruction) {
+    // TODO: Promote this to a first-class AgentTaskCreate field once the backend returns interpreted instructions.
+    contract.agent_instruction = trimmedInstruction;
+  }
+  return contract;
 }
 
 function eventStatus(event: AgentEvent): JobEvent["status"] {

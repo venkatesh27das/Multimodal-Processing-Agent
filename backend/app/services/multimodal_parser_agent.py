@@ -44,6 +44,7 @@ from backend.app.models.domain import (
 )
 from backend.app.schemas.agent import AgentCard, AgentEndpointMap, AgentTaskCreate, AgentTaskDetail
 from backend.app.schemas.domain import ParserSelectionRequest
+from backend.app.services.agent_instruction_interpreter import agent_instruction_interpreter
 from backend.app.services.file_profiling import file_profiler
 from backend.app.services.tool_gateway import tool_gateway
 
@@ -133,21 +134,33 @@ class MultimodalParserAgent:
             )
 
         file_id = file_records[0].id
-        tool_policy = tool_gateway.policy_snapshot(payload.governance_constraints)
+        (
+            requested_output_contract,
+            governance_constraints,
+            instruction_interpretation,
+        ) = agent_instruction_interpreter.enrich(
+            requested_output_contract=payload.requested_output_contract,
+            governance_constraints=payload.governance_constraints,
+            agent_instruction=payload.agent_instruction,
+        )
+        tool_policy = tool_gateway.policy_snapshot(governance_constraints)
         input_payload = {
             **payload.model_dump(mode="json"),
             "materialized_file_ids": [file_record.id for file_record in file_records],
             "input_count": len(file_records),
             "tool_policy": tool_policy,
         }
+        if instruction_interpretation is not None:
+            input_payload["agent_instruction"] = instruction_interpretation.instruction
+            input_payload["agent_instruction_interpretation"] = instruction_interpretation.to_dict()
 
         task = AgentTask(
             status=AgentTaskStatus.SUBMITTED.value,
             title=payload.title or self._task_title(file_records),
             summary="Parser-agent task submitted.",
             file_id=file_id,
-            requested_output_contract=payload.requested_output_contract,
-            governance_constraints=payload.governance_constraints,
+            requested_output_contract=requested_output_contract,
+            governance_constraints=governance_constraints,
             quality_target=payload.quality_target.value,
             cost_profile=payload.cost_profile.value,
             latency_profile=payload.latency_profile.value,

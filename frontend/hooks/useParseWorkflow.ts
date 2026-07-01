@@ -37,6 +37,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
   const [step, setStep] = useState<ParseWorkflowStep>("upload");
   const [objective, setObjective] = useState<ParseObjective>("general");
   const [configuration, setConfiguration] = useState<ParseConfiguration>(() => defaultParseConfiguration());
+  const [agentInstruction, setAgentInstruction] = useState("");
   const [plan, setPlan] = useState<ParsingPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -93,6 +94,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
                 file.profile?.file_type ?? file.type,
                 objective,
                 configuration,
+                agentInstruction,
               ),
         ),
       );
@@ -111,7 +113,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     } finally {
       if (requestId === planRequestId.current) setPlanning(false);
     }
-  }, [configuration, objective, uploadedFiles]);
+  }, [agentInstruction, configuration, objective, uploadedFiles]);
 
   useEffect(() => {
     if (step !== "configure") return;
@@ -166,6 +168,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
           fileIds: readyFiles.map((file) => file.fileId as string),
           objective,
           configuration,
+          agentInstruction,
           title: `Process ${readyFiles.length} file${readyFiles.length === 1 ? "" : "s"}`,
         });
         runResponses = agentTaskToRunResponses(createdTask, readyFiles);
@@ -188,7 +191,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     } finally {
       setCreatingJob(false);
     }
-  }, [configuration, creatingJob, objective, uploadedFiles]);
+  }, [agentInstruction, configuration, creatingJob, objective, uploadedFiles]);
 
   useEffect(() => {
     if (step !== "running" || !jobRuns.length) return;
@@ -254,6 +257,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
   const resetWorkflow = useCallback(() => {
     setStep("upload");
     setObjective("general");
+    setAgentInstruction("");
     setConfiguration(defaultParseConfiguration());
     setPlan(null);
     setPlanning(false);
@@ -271,6 +275,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     step,
     objective,
     configuration,
+    agentInstruction,
     plan,
     planning,
     planError,
@@ -284,6 +289,7 @@ export function useParseWorkflow(uploadedFiles: UploadedFile[]) {
     toast,
     setObjective: updateObjective,
     updateConfiguration,
+    setAgentInstruction,
     computePlan,
     goToConfigure,
     goToReview,

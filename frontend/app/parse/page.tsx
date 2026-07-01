@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudUpload,
   Download,
@@ -17,8 +19,10 @@ import {
   Layers3,
   Loader2,
   Mail,
+  MessageSquareText,
   MoreHorizontal,
   Network,
+  PenLine,
   Plus,
   Play,
   Search,
@@ -34,7 +38,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import type { DragEvent, RefObject } from "react";
+import type { DragEvent, ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { UploadedFile } from "@/api/files";
 import type {
@@ -96,12 +100,47 @@ const outputAssetOptions: Array<{
   { id: "user_defined_extraction", label: "User Fields", description: "Custom fields from schema or prompt.", icon: Settings2 },
 ];
 
+const outputAssetGroups: Array<{ title: string; assets: GeneratedAssetKind[] }> = [
+  { title: "Core", assets: ["parsed_content", "document_structure", "tables"] },
+  { title: "Search & AI", assets: ["chunks", "vectors", "summary"] },
+  { title: "Knowledge", assets: ["entities", "relationships", "knowledge_graph", "evidence"] },
+  { title: "Governance", assets: ["quality_report", "lineage", "review_package"] },
+  { title: "Custom", assets: ["user_defined_extraction"] },
+];
+
 const supportedFormats = ["PDF", "DOCX", "PPTX", "XLSX", "TXT", "PNG", "JPG", "MP3", "MP4"];
 const uploadSources: Array<{ label: string; icon: LucideIcon }> = [
   { label: "Local Upload", icon: Laptop },
   { label: "Cloud Storage", icon: Cloud },
   { label: "SharePoint", icon: Share2 },
   { label: "Email Intake", icon: Mail },
+];
+
+const quickInstructions = [
+  {
+    label: "Extract tables",
+    instruction: "Extract all tables with headers, rows, and source evidence references.",
+  },
+  {
+    label: "Make search-ready",
+    instruction: "Create search-ready chunks with metadata and preserve evidence references.",
+  },
+  {
+    label: "Prepare KG-ready assets",
+    instruction: "Extract entities and relationships so the output can be used for a knowledge graph.",
+  },
+  {
+    label: "Summarize content",
+    instruction: "Summarize the document with key points, important dates, and decisions.",
+  },
+  {
+    label: "Validate invoice fields",
+    instruction: "Extract and validate invoice fields including vendor, invoice number, dates, totals, taxes, and line items.",
+  },
+  {
+    label: "Extract contract clauses",
+    instruction: "Extract contract clauses, parties, obligations, dates, terms, and governing law with evidence spans.",
+  },
 ];
 
 export default function ParsePage() {
@@ -163,9 +202,11 @@ export default function ParsePage() {
         <UploadState
           files={upload.files}
           fileTypes={fileTypes}
+          agentInstruction={workflow.agentInstruction}
           inputRef={inputRef}
           onDrop={handleDrop}
           onFileChange={addSelectedFiles}
+          onInstructionChange={workflow.setAgentInstruction}
           onRemove={upload.removeFile}
           onSaveDraft={workflow.saveDraft}
           onContinue={workflow.goToConfigure}
@@ -177,11 +218,13 @@ export default function ParsePage() {
       {workflow.step === "configure" ? (
         <ConfigureState
           configuration={workflow.configuration}
+          agentInstruction={workflow.agentInstruction}
           files={upload.uploadedFiles}
           objective={workflow.objective}
           onBack={() => workflow.setStep("upload")}
           onContinue={workflow.goToReview}
           onObjectiveChange={workflow.setObjective}
+          onSaveDraft={workflow.saveDraft}
           onUpdateConfiguration={workflow.updateConfiguration}
           plan={workflow.plan}
           planError={workflow.planError}
@@ -240,22 +283,26 @@ function ParseStepper({ current, steps }: { current: number; steps: string[] }) 
 }
 
 function UploadState({
+  agentInstruction,
   files,
   fileTypes,
   inputRef,
   onDrop,
   onFileChange,
+  onInstructionChange,
   onRemove,
   onSaveDraft,
   onContinue,
   totalSize,
   uploading,
 }: {
+  agentInstruction: string;
   files: UploadedFile[];
   fileTypes: Array<{ type: string; count: number }>;
   inputRef: RefObject<HTMLInputElement>;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
   onFileChange: (files: FileList | null) => void;
+  onInstructionChange: (value: string) => void;
   onRemove: (localId: string) => void;
   onSaveDraft: () => void;
   onContinue: () => void;
@@ -289,6 +336,12 @@ function UploadState({
             onChange={(event) => onFileChange(event.target.files)}
           />
         </label>
+
+        <AgentInstructionInput
+          className="mt-4"
+          value={agentInstruction}
+          onChange={onInstructionChange}
+        />
 
         <p className="mt-4 text-sm font-bold text-ink">Or upload from</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -340,221 +393,595 @@ function UploadState({
         </div>
       </Card>
 
-      <UploadSummary files={files} fileTypes={fileTypes} />
+      <UploadSummary agentInstruction={agentInstruction} files={files} fileTypes={fileTypes} />
     </div>
   );
 }
 
+function AgentInstructionInput({
+  className = "",
+  onChange,
+  value,
+}: {
+  className?: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  function appendInstruction(instruction: string) {
+    const trimmed = value.trim();
+    onChange(trimmed ? `${trimmed}\n${instruction}` : instruction);
+  }
+
+  return (
+    <section className={`rounded-md border border-border bg-white p-3 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-bold text-ink">Tell the agent what you want to do</h3>
+        <Tag>Optional</Tag>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-muted">
+        Describe the outcome you want. The agent will use this to recommend objectives, parsers, skills, outputs, fallback strategy, and review rules.
+      </p>
+      <textarea
+        className="mt-3 min-h-[96px] w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        placeholder="Example: Extract all tables and key entities, create search-ready chunks, preserve evidence references, and route low-confidence results to review."
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {quickInstructions.map((item) => (
+          <button
+            key={item.label}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-ink transition hover:border-accent hover:bg-accent-soft"
+            type="button"
+            onClick={() => appendInstruction(item.instruction)}
+          >
+            <MessageSquareText className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ConfigureState({
+  agentInstruction,
   configuration,
   files,
   objective,
   onBack,
   onContinue,
   onObjectiveChange,
+  onSaveDraft,
   onUpdateConfiguration,
   plan,
   planError,
   planning,
 }: {
+  agentInstruction: string;
   configuration: ParseConfiguration;
   files: UploadedFile[];
   objective: ParseObjective;
   onBack: () => void;
   onContinue: () => void;
   onObjectiveChange: (objective: ParseObjective) => void;
+  onSaveDraft: () => void;
   onUpdateConfiguration: (patch: Partial<ParseConfiguration>) => void;
   plan: ParsingPlan | null;
   planError: string | null;
   planning: boolean;
 }) {
-  function toggleAsset(asset: GeneratedAssetKind) {
-    const selected = new Set(configuration.selectedAssets);
-    if (selected.has(asset)) {
-      selected.delete(asset);
-    } else {
-      selected.add(asset);
-    }
-    const nextAssets = outputAssetOptions
-      .map((option) => option.id)
-      .filter((assetId) => selected.has(assetId));
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [planMessage, setPlanMessage] = useState<string | null>(null);
+  const agentInterpretation = firstAgentInterpretation(plan);
+  const inferredObjective = typeof agentInterpretation?.inferred_objective === "string"
+    ? agentInterpretation.inferred_objective
+    : null;
+  const inferredOutputs = Array.isArray(agentInterpretation?.inferred_outputs)
+    ? agentInterpretation.inferred_outputs.filter((item): item is string => typeof item === "string")
+    : [];
+
+  function updateSelectedAssets(nextAssets: GeneratedAssetKind[]) {
     onUpdateConfiguration({
       selectedAssets: nextAssets,
       tableStructureDetection: nextAssets.includes("tables"),
       generateEmbeddings: nextAssets.includes("vectors"),
+      outputPreset: presetForAssets(nextAssets, configuration.outputPreset),
     });
   }
 
   return (
     <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
-        <section>
-          <SectionHeader title="Parsing objective" description="Select the primary objective for this parsing run." />
-          <div className="mt-4 grid gap-3 md:grid-cols-3 2xl:grid-cols-6">
-            {objectives.map((item) => (
-              <ObjectiveButton
-                key={item.id}
-                active={objective === item.id}
-                icon={item.icon}
-                title={item.title}
-                description={item.description}
-                onClick={() => onObjectiveChange(item.id)}
-              />
-            ))}
-          </div>
-        </section>
+        <AgentRecommendationBanner
+          hasInstruction={Boolean(agentInstruction.trim())}
+          onViewInterpretation={() => {
+            if (agentInstruction.trim()) {
+              document.getElementById("agent-interpretation-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+              setPlanMessage("Plan details view is not available yet.");
+            }
+          }}
+        />
 
-        <Card className="p-4">
-          <SectionHeader
-            title="Recommended parser strategy"
-            description="Per-file parser recommendations based on content type and objective."
-            action={planning ? <span className="text-xs font-bold text-accent">Planning...</span> : null}
+        {agentInstruction.trim() ? (
+          <AgentInstructionSummary
+            agentInstruction={agentInstruction}
+            inferredObjective={inferredObjective}
+            inferredOutputs={inferredOutputs}
+            objective={objective}
+            plan={plan}
+            onChangeInstruction={onBack}
           />
-          {planError ? <ErrorBox message={planError} /> : null}
-          <RecommendationTable files={files} planning={planning} recommendations={plan?.recommendations ?? []} />
-        </Card>
+        ) : null}
 
-        <Card className="p-4">
-          <SectionHeader
-            title="Output assets"
-            description="Choose the concrete assets the parser agent should generate for this run."
-            action={<span className="text-xs font-bold text-muted">{configuration.selectedAssets.length} selected</span>}
-          />
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {outputAssetOptions.map((asset) => (
-              <AssetOptionButton
-                key={asset.id}
-                active={configuration.selectedAssets.includes(asset.id)}
-                description={asset.description}
-                icon={asset.icon}
-                label={asset.label}
-                onClick={() => toggleAsset(asset.id)}
-              />
-            ))}
+        <ParsingObjectiveCards objective={objective} onObjectiveChange={onObjectiveChange} />
+
+        <RecommendedParserStrategy
+          files={files}
+          planError={planError}
+          planning={planning}
+          recommendations={plan?.recommendations ?? []}
+          onViewPlanDetails={() => setPlanMessage("Plan details view is not available yet.")}
+        />
+        {planMessage ? (
+          <div className="rounded-md border border-amber-200 bg-warning-soft p-3 text-sm font-semibold text-amber-800">
+            {planMessage}
           </div>
-        </Card>
+        ) : null}
 
-        <Card className="p-4">
-          <SectionHeader title="Smart configuration" description="Recommended settings optimized for your selected objective and files." />
-          <div className="mt-4 grid gap-3 md:grid-cols-3 2xl:grid-cols-5">
-            <ConfigSelect
-              label="Output Preset"
-              value={configuration.outputPreset}
-              options={[
-                ["balanced", "Balanced"],
-                ["text_structure", "Text & structure"],
-                ["structured", "Structured data"],
-                ["search", "Search-ready"],
-                ["graph", "Graph-ready"],
-              ]}
-              onChange={(value) => onUpdateConfiguration({ outputPreset: value as ParseConfiguration["outputPreset"] })}
-            />
-            <ConfigSelect
-              label="Quality Target"
-              value={configuration.qualityTarget}
-              options={[["low", "Low"], ["balanced", "Balanced"], ["high", "High (92%+)"]]}
-              onChange={(value) => onUpdateConfiguration({ qualityTarget: value as ParseConfiguration["qualityTarget"] })}
-            />
-            <ConfigSelect
-              label="Cost Profile"
-              value={configuration.costProfile}
-              options={[["low_cost", "Low cost"], ["balanced", "Balanced"], ["premium", "Premium"]]}
-              onChange={(value) => onUpdateConfiguration({ costProfile: value as ParseConfiguration["costProfile"] })}
-            />
-            <ConfigSelect
-              label="Latency Profile"
-              value={configuration.latencyProfile}
-              options={[["batch", "Batch"], ["interactive", "Standard"], ["real_time", "Real-time"]]}
-              onChange={(value) => onUpdateConfiguration({ latencyProfile: value as ParseConfiguration["latencyProfile"] })}
-            />
-            <ConfigSelect
-              label="Human Review Policy"
-              value={configuration.humanReviewPolicy}
-              options={[
-                ["review_if_70", "Review if <70%"],
-                ["review_if_85", "Review if <85%"],
-                ["review_if_92", "Review if <92%"],
-                ["always", "Always review"],
-                ["never", "Never"],
-              ]}
-              onChange={(value) => onUpdateConfiguration({ humanReviewPolicy: value as ParseConfiguration["humanReviewPolicy"] })}
-            />
-          </div>
-          <Card className="mt-4 p-3 shadow-none">
-            <SectionHeader title="Advanced Options" />
-            <div className="mt-4 grid gap-x-8 gap-y-3 lg:grid-cols-2">
-              <TextField
-                label="Custom outputs"
-                value={configuration.customOutputs}
-                placeholder="Add custom outputs (JSON schema, fields, etc.)"
-                onChange={(value) => onUpdateConfiguration({ customOutputs: value })}
-              />
-              <ToggleRow
-                label="Enable table structure detection"
-                checked={configuration.selectedAssets.includes("tables")}
-                onClick={() => toggleAsset("tables")}
-              />
-              <TextField
-                label="Preferred parser override"
-                value={configuration.preferredParserOverride}
-                placeholder="Select a parser (optional)"
-                onChange={(value) => onUpdateConfiguration({ preferredParserOverride: value })}
-              />
-              <ToggleRow
-                label="Generate embeddings"
-                checked={configuration.selectedAssets.includes("vectors")}
-                onClick={() => toggleAsset("vectors")}
-              />
-              <TextField
-                label="Skill override"
-                value={configuration.skillOverride}
-                placeholder="Select a skill (optional)"
-                onChange={(value) => onUpdateConfiguration({ skillOverride: value })}
-              />
-              <ConfigSelect
-                label="Sensitivity handling"
-                value={configuration.sensitivityHandling}
-                options={[
-                  ["auto_mask", "Auto-detect & mask (PII, PHI)"],
-                  ["detect_only", "Detect only"],
-                  ["none", "None"],
-                ]}
-                onChange={(value) => onUpdateConfiguration({ sensitivityHandling: value as ParseConfiguration["sensitivityHandling"] })}
-              />
-              <ConfigSelect
-                label="Fallback policy"
-                value={configuration.fallbackPolicy}
-                options={[
-                  ["recommended", "Use recommended fallback"],
-                  ["aggressive", "Aggressive fallback"],
-                  ["none", "No fallback"],
-                ]}
-                onChange={(value) => onUpdateConfiguration({ fallbackPolicy: value as ParseConfiguration["fallbackPolicy"] })}
-              />
-              <ConfigSelect
-                label="OCR & image handling"
-                value={configuration.ocrImageHandling}
-                options={[
-                  ["auto", "Auto (Detect text, OCR if needed)"],
-                  ["force_ocr", "Force OCR"],
-                  ["native_only", "Native text only"],
-                ]}
-                onChange={(value) => onUpdateConfiguration({ ocrImageHandling: value as ParseConfiguration["ocrImageHandling"] })}
-              />
-            </div>
-          </Card>
-        </Card>
+        <OutputPresetSummary
+          configuration={configuration}
+          onCustomize={() => setCustomizeOpen(true)}
+          onUpdateConfiguration={onUpdateConfiguration}
+        />
 
-        <div className="sticky bottom-0 z-10 flex justify-between border-t border-border bg-surface/95 py-3 backdrop-blur">
+        <SmartConfigurationGrid configuration={configuration} onUpdateConfiguration={onUpdateConfiguration} />
+
+        <AdvancedOptionsAccordion
+          configuration={configuration}
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+          onUpdateConfiguration={onUpdateConfiguration}
+        />
+
+        <div className="sticky bottom-0 z-10 flex justify-between gap-3 border-t border-border bg-surface/95 py-3 backdrop-blur">
           <ActionButton type="button" variant="secondary" onClick={onBack}>Back</ActionButton>
-          <ActionButton type="button" icon={ArrowRight} disabled={planning || !plan} onClick={onContinue}>
-            Continue to Review
-          </ActionButton>
+          <div className="flex gap-3">
+            <ActionButton type="button" variant="secondary" onClick={onSaveDraft}>Save Draft</ActionButton>
+            <ActionButton type="button" icon={ArrowRight} disabled={planning || !plan} onClick={onContinue}>
+              Continue to Review
+            </ActionButton>
+          </div>
         </div>
       </div>
 
-      <ConfigureSummary configuration={configuration} plan={plan} />
+      <ConfigureSummary configuration={configuration} files={files} plan={plan} />
+      {customizeOpen ? (
+        <CustomizeOutputsDrawer
+          configuration={configuration}
+          onApply={updateSelectedAssets}
+          onClose={() => setCustomizeOpen(false)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function AgentRecommendationBanner({
+  hasInstruction,
+  onViewInterpretation,
+}: {
+  hasInstruction: boolean;
+  onViewInterpretation: () => void;
+}) {
+  return (
+    <Card className="border-emerald-200 bg-success-soft p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-bold text-emerald-800">Agent recommendations are ready</p>
+            <p className="text-xs text-emerald-700">We interpreted your inputs and prepared a plan. Review and adjust as needed.</p>
+          </div>
+        </div>
+        <button className="text-sm font-bold text-emerald-800 hover:text-accent" type="button" onClick={onViewInterpretation}>
+          {hasInstruction ? "View interpretation" : "View plan details"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function AgentInstructionSummary({
+  agentInstruction,
+  inferredObjective,
+  inferredOutputs,
+  objective,
+  onChangeInstruction,
+  plan,
+}: {
+  agentInstruction: string;
+  inferredObjective: string | null;
+  inferredOutputs: string[];
+  objective: ParseObjective;
+  onChangeInstruction: () => void;
+  plan: ParsingPlan | null;
+}) {
+  const outputs = inferredOutputs.length
+    ? inferredOutputs.map(labelForAssetId)
+    : configurationLabelsFromPlan(plan).slice(0, 6);
+  const skills = plan?.recommendedSkills?.length ? plan.recommendedSkills : ["table_normalization"];
+  return (
+    <div id="agent-interpretation-card">
+      <Card className="p-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_170px_260px_190px]">
+        <div>
+          <div className="flex items-center gap-2">
+            <MessageSquareText className="h-4 w-4 text-purple" aria-hidden="true" />
+            <p className="text-sm font-bold text-ink">Agent interpreted instruction</p>
+          </div>
+          <p className="mt-3 line-clamp-2 text-sm italic text-muted">&ldquo;{agentInstruction}&rdquo;</p>
+          <button className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-info" type="button" onClick={onChangeInstruction}>
+            Change instruction <PenLine className="h-3 w-3" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+          <p className="text-xs font-bold text-muted">Detected objective</p>
+          <div className="mt-2"><Tag tone="info">{objectiveTitle((inferredObjective as ParseObjective | null) ?? objective)}</Tag></div>
+        </div>
+        <div className="border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+          <p className="text-xs font-bold text-muted">Recommended outputs</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {outputs.slice(0, 5).map((output) => <Tag key={output}>{output}</Tag>)}
+            {outputs.length > 5 ? <Tag>+{outputs.length - 5} more</Tag> : null}
+          </div>
+        </div>
+        <div className="border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+          <p className="text-xs font-bold text-muted">Recommended skills</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {skills.slice(0, 2).map((skill) => <Tag key={skill} tone="success">{skill}</Tag>)}
+          </div>
+        </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ParsingObjectiveCards({
+  objective,
+  onObjectiveChange,
+}: {
+  objective: ParseObjective;
+  onObjectiveChange: (objective: ParseObjective) => void;
+}) {
+  return (
+    <section>
+      <SectionHeader title="Parsing objective" description="Select the primary objective for this parsing run." />
+      <div className="mt-3 grid gap-2 md:grid-cols-3 2xl:grid-cols-6">
+        {objectives.map((item) => (
+          <button
+            key={item.id}
+            className={`min-h-[94px] rounded-md border p-3 text-left transition ${
+              objective === item.id ? "border-accent bg-accent-soft/60" : "border-border bg-white hover:bg-surface"
+            }`}
+            type="button"
+            onClick={() => onObjectiveChange(item.id)}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <item.icon className={objective === item.id ? "h-4 w-4 text-accent" : "h-4 w-4 text-muted"} />
+              <span className={`h-3.5 w-3.5 rounded-full border ${objective === item.id ? "border-accent bg-accent" : "border-slate-300"}`} />
+            </div>
+            <p className="mt-3 text-sm font-bold text-ink">{item.title}</p>
+            <p className="mt-1 text-xs leading-5 text-muted">{item.description}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RecommendedParserStrategy({
+  files,
+  onViewPlanDetails,
+  planError,
+  planning,
+  recommendations,
+}: {
+  files: UploadedFile[];
+  onViewPlanDetails: () => void;
+  planError: string | null;
+  planning: boolean;
+  recommendations: ParserRecommendation[];
+}) {
+  return (
+    <Card className="p-4">
+      <SectionHeader
+        title="Recommended parser strategy"
+        description="Per-file parser recommendations based on content type and objective."
+        action={<button className="text-xs font-bold text-info" type="button" onClick={onViewPlanDetails}>View plan details</button>}
+      />
+      {planError ? <ErrorBox message={planError} /> : null}
+      <div className="mt-3 overflow-x-auto rounded-md border border-border">
+        <table className="w-full min-w-[940px] text-left text-sm">
+          <thead className="bg-surface text-xs font-bold text-muted">
+            <tr>
+              <th className="px-3 py-2">File</th>
+              <th className="px-3 py-2">Primary Parser (Recommended)</th>
+              <th className="px-3 py-2">Fallback Parser</th>
+              <th className="px-3 py-2">Recommended Skill</th>
+              <th className="px-3 py-2">Reason</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {files.map((file) => {
+              const recommendation = recommendations.find((item) => item.fileId === file.fileId);
+              return (
+                <tr key={file.localId}>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <FileTypeIcon type={file.type} />
+                      <div>
+                        <p className="font-bold text-ink">{file.name}</p>
+                        <p className="text-xs text-muted">{file.sizeLabel} · {file.type.toUpperCase()}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-ink">
+                    {planning && !recommendation ? "Planning..." : recommendation?.primaryParserId ?? "--"}{" "}
+                    {recommendation ? <Tag tone="success">Primary</Tag> : null}
+                  </td>
+                  <td className="px-3 py-2 text-ink">
+                    {recommendation?.fallbackParserId ?? "No fallback"}{" "}
+                    {recommendation?.fallbackParserId ? <Tag tone="info">Fallback</Tag> : null}
+                  </td>
+                  <td className="px-3 py-2 text-ink">{recommendation?.selectedSkillId ?? "--"}</td>
+                  <td className="px-3 py-2 text-muted">{shortReason(recommendation?.decisionExplanation)}</td>
+                  <td className="px-3 py-2"><MoreHorizontal className="h-4 w-4 text-muted" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function OutputPresetSummary({
+  configuration,
+  onCustomize,
+  onUpdateConfiguration,
+}: {
+  configuration: ParseConfiguration;
+  onCustomize: () => void;
+  onUpdateConfiguration: (patch: Partial<ParseConfiguration>) => void;
+}) {
+  const selectedLabels = configuration.selectedAssets.map(labelForGeneratedAssetKind);
+  return (
+    <Card className="p-4">
+      <div className="grid gap-4 lg:grid-cols-[230px_1fr_auto] lg:items-center">
+        <ConfigSelect
+          label="Output preset & selected assets"
+          value={configuration.outputPreset}
+          options={[
+            ["balanced", "Balanced"],
+            ["search", "Search-ready"],
+            ["structured", "Structured extraction"],
+            ["graph", "Graph-ready"],
+            ["custom", "Custom"],
+          ]}
+          onChange={(value) => {
+            const outputPreset = value as ParseConfiguration["outputPreset"];
+            onUpdateConfiguration({
+              outputPreset,
+              ...(outputPreset === "custom" ? {} : {
+                selectedAssets: defaultAssetsForPreset(outputPreset),
+                tableStructureDetection: defaultAssetsForPreset(outputPreset).includes("tables"),
+                generateEmbeddings: defaultAssetsForPreset(outputPreset).includes("vectors"),
+              }),
+            });
+          }}
+        />
+        <div>
+          <p className="text-xs font-bold text-success">{configuration.selectedAssets.length} selected</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {selectedLabels.slice(0, 5).map((label) => <Tag key={label}>{label}</Tag>)}
+            {selectedLabels.length > 5 ? <Tag>+{selectedLabels.length - 5} more</Tag> : null}
+          </div>
+        </div>
+        <button className="inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold text-info hover:bg-info-soft" type="button" onClick={onCustomize}>
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+          Customize outputs
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function CustomizeOutputsDrawer({
+  configuration,
+  onApply,
+  onClose,
+}: {
+  configuration: ParseConfiguration;
+  onApply: (assets: GeneratedAssetKind[]) => void;
+  onClose: () => void;
+}) {
+  const [draftAssets, setDraftAssets] = useState<GeneratedAssetKind[]>(configuration.selectedAssets);
+  const selected = new Set(draftAssets);
+  const toggleDraftAsset = (asset: GeneratedAssetKind) => {
+    const next = new Set(draftAssets);
+    if (next.has(asset)) next.delete(asset);
+    else next.add(asset);
+    setDraftAssets(outputAssetOptions.map((option) => option.id).filter((assetId) => next.has(assetId)));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-ink/30">
+      <aside className="ml-auto flex h-full w-full max-w-[560px] flex-col bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b border-border p-4">
+          <div>
+            <h2 className="text-lg font-bold text-ink">Customize Output Assets</h2>
+            <p className="mt-1 text-sm text-muted">Choose the concrete assets this run should generate.</p>
+            <p className="mt-2 text-xs font-bold text-success">{draftAssets.length} selected</p>
+          </div>
+          <button className="text-muted hover:text-ink" type="button" onClick={onClose}>
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          {outputAssetGroups.map((group) => (
+            <section key={group.title}>
+              <p className="text-xs font-bold uppercase text-muted">{group.title}</p>
+              <div className="mt-2 grid gap-2">
+                {group.assets.map((assetId) => {
+                  const asset = outputAssetOptions.find((option) => option.id === assetId);
+                  if (!asset) return null;
+                  return (
+                    <AssetOptionButton
+                      key={asset.id}
+                      active={selected.has(asset.id)}
+                      description={asset.description}
+                      icon={asset.icon}
+                      label={asset.label}
+                      onClick={() => toggleDraftAsset(asset.id)}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-border p-4">
+          <ActionButton type="button" variant="secondary" onClick={onClose}>Cancel</ActionButton>
+          <ActionButton type="button" onClick={() => {
+            onApply(draftAssets);
+            onClose();
+          }}>
+            Apply Outputs
+          </ActionButton>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function SmartConfigurationGrid({
+  configuration,
+  onUpdateConfiguration,
+}: {
+  configuration: ParseConfiguration;
+  onUpdateConfiguration: (patch: Partial<ParseConfiguration>) => void;
+}) {
+  return (
+    <Card className="p-4">
+      <SectionHeader title="Smart configuration" description="Recommended settings optimized for your selected objective and files." />
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ConfigSelect
+          label="Quality Target"
+          value={configuration.qualityTarget}
+          options={[["high", "High (92%+)"], ["balanced", "Balanced"], ["low", "Low"]]}
+          onChange={(value) => onUpdateConfiguration({ qualityTarget: value as ParseConfiguration["qualityTarget"] })}
+        />
+        <ConfigSelect
+          label="Cost Profile"
+          value={configuration.costProfile}
+          options={[["low_cost", "Low cost"], ["balanced", "Balanced"], ["premium", "Premium"]]}
+          onChange={(value) => onUpdateConfiguration({ costProfile: value as ParseConfiguration["costProfile"] })}
+        />
+        <ConfigSelect
+          label="Latency Profile"
+          value={configuration.latencyProfile}
+          options={[["interactive", "Standard"], ["real_time", "Interactive"], ["batch", "Batch"]]}
+          onChange={(value) => onUpdateConfiguration({ latencyProfile: value as ParseConfiguration["latencyProfile"] })}
+        />
+        <ConfigSelect
+          label="Human Review Policy"
+          value={configuration.humanReviewPolicy}
+          options={[["review_if_85", "Review if <85%"], ["review_if_70", "Review if <80%"], ["always", "Manual review always"], ["never", "No review unless failed"]]}
+          onChange={(value) => onUpdateConfiguration({ humanReviewPolicy: value as ParseConfiguration["humanReviewPolicy"] })}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function AdvancedOptionsAccordion({
+  configuration,
+  onOpenChange,
+  onUpdateConfiguration,
+  open,
+}: {
+  configuration: ParseConfiguration;
+  onOpenChange: (open: boolean) => void;
+  onUpdateConfiguration: (patch: Partial<ParseConfiguration>) => void;
+  open: boolean;
+}) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <button className="flex w-full items-center justify-between p-4 text-left" type="button" onClick={() => onOpenChange(!open)}>
+        <span>
+          <span className="block text-sm font-bold text-ink">Advanced options</span>
+          {!open ? <span className="mt-1 block text-xs text-muted">Parser override, skills, OCR, sensitivity handling, embeddings, and more.</span> : null}
+        </span>
+        <span className="inline-flex items-center gap-2 text-xs font-bold text-muted">
+          {open ? "Collapse" : "Expand"} {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </span>
+      </button>
+      {open ? (
+        <div className="space-y-5 border-t border-border p-4">
+          <div className="grid gap-5 xl:grid-cols-2">
+            <AdvancedSection title="Parser & Skill Controls">
+              <TextField label="Preferred parser override" value={configuration.preferredParserOverride} placeholder="Auto (Use recommended)" onChange={(value) => onUpdateConfiguration({ preferredParserOverride: value })} />
+              <TextField label="Skill override (optional)" value={configuration.skillOverride} placeholder="Select skill (optional)" onChange={(value) => onUpdateConfiguration({ skillOverride: value })} />
+              <ConfigSelect label="Fallback policy" value={configuration.fallbackPolicy} options={[["recommended", "Use recommended fallback"], ["aggressive", "Always compare primary and fallback"], ["none", "Disable fallback"]]} onChange={(value) => onUpdateConfiguration({ fallbackPolicy: value as ParseConfiguration["fallbackPolicy"] })} />
+              <NumberStepper label="Max fallback attempts" value={configuration.maxFallbackAttempts} min={0} max={5} onChange={(value) => onUpdateConfiguration({ maxFallbackAttempts: value })} />
+            </AdvancedSection>
+            <AdvancedSection title="OCR & Image Handling">
+              <ToggleRow label="Enable table structure detection" checked={configuration.tableStructureDetection} onClick={() => onUpdateConfiguration({ tableStructureDetection: !configuration.tableStructureDetection })} />
+              <ConfigSelect label="OCR & text extraction" value={configuration.ocrImageHandling} options={[["auto", "Auto (Detect text, OCR if needed)"], ["force_ocr", "Force OCR"], ["native_only", "Skip OCR"]]} onChange={(value) => onUpdateConfiguration({ ocrImageHandling: value as ParseConfiguration["ocrImageHandling"] })} />
+              <ConfigSelect label="Image quality check" value={configuration.imageQualityCheck} options={[["auto", "Auto (Flag low quality images)"], ["strict", "Strict"], ["disabled", "Disabled"]]} onChange={(value) => onUpdateConfiguration({ imageQualityCheck: value as ParseConfiguration["imageQualityCheck"] })} />
+              <ToggleRow label="Image/chart understanding" checked={configuration.imageChartUnderstanding} onClick={() => onUpdateConfiguration({ imageChartUnderstanding: !configuration.imageChartUnderstanding })} />
+            </AdvancedSection>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-3">
+            <AdvancedSection title="Data & Output Controls">
+              <ToggleRow label="Generate embeddings" checked={configuration.generateEmbeddings} onClick={() => onUpdateConfiguration({ generateEmbeddings: !configuration.generateEmbeddings })} />
+              <ConfigSelect label="Chunking strategy" value={configuration.chunkingStrategy} options={[["auto_layout", "Auto (Layout aware)"], ["fixed_size", "Fixed size"], ["section_aware", "Section aware"]]} onChange={(value) => onUpdateConfiguration({ chunkingStrategy: value as ParseConfiguration["chunkingStrategy"] })} />
+              <NumberStepper label="Max chunk size" value={configuration.maxChunkSize} min={200} max={5000} step={100} onChange={(value) => onUpdateConfiguration({ maxChunkSize: value })} />
+              <NumberStepper label="Chunk overlap" value={configuration.chunkOverlap} min={0} max={1000} step={50} onChange={(value) => onUpdateConfiguration({ chunkOverlap: value })} />
+            </AdvancedSection>
+            <AdvancedSection title="Sensitivity & Governance">
+              <ConfigSelect label="Sensitivity handling" value={configuration.sensitivityHandling} options={[["auto_mask", "Auto-detect & mask (PII, PHI)"], ["detect_only", "Detect only"], ["none", "Disabled"]]} onChange={(value) => onUpdateConfiguration({ sensitivityHandling: value as ParseConfiguration["sensitivityHandling"] })} />
+              <DecimalField label="Redaction confidence threshold" value={configuration.redactionConfidenceThreshold} onChange={(value) => onUpdateConfiguration({ redactionConfidenceThreshold: value })} />
+              <ConfigSelect label="PHI handling" value={configuration.phiHandling} options={[["mask_tokenize", "Mask & tokenize"], ["mask_only", "Mask only"], ["disabled", "Disabled"]]} onChange={(value) => onUpdateConfiguration({ phiHandling: value as ParseConfiguration["phiHandling"] })} />
+              <CheckboxRow label="Audit all sensitive field detections" checked={configuration.auditSensitiveDetections} onChange={(checked) => onUpdateConfiguration({ auditSensitiveDetections: checked })} />
+            </AdvancedSection>
+            <AdvancedSection title="Quality & Review">
+              <DecimalField label="Quality threshold" value={configuration.qualityThreshold} onChange={(value) => onUpdateConfiguration({ qualityThreshold: value })} />
+              <ToggleRow label="Route below threshold to review" checked={configuration.routeBelowThresholdToReview} onClick={() => onUpdateConfiguration({ routeBelowThresholdToReview: !configuration.routeBelowThresholdToReview })} />
+              <ConfigSelect label="Human review queue" value={configuration.humanReviewQueue} options={[["default", "Default Review Queue"]]} onChange={(value) => onUpdateConfiguration({ humanReviewQueue: value })} />
+              <ToggleRow label="Auto-approve above threshold" checked={configuration.autoApproveAboveThreshold} onClick={() => onUpdateConfiguration({ autoApproveAboveThreshold: !configuration.autoApproveAboveThreshold })} />
+            </AdvancedSection>
+          </div>
+          <AdvancedSection title="Processing & Performance">
+            <div className="grid gap-3 md:grid-cols-3">
+              <ConfigSelect label="Priority" value={configuration.processingPriority} options={[["normal", "Normal"], ["high", "High"], ["batch", "Batch"]]} onChange={(value) => onUpdateConfiguration({ processingPriority: value as ParseConfiguration["processingPriority"] })} />
+              <NumberStepper label="Max processing time per file" value={configuration.maxProcessingTimePerFileMinutes} min={1} max={120} suffix="min" onChange={(value) => onUpdateConfiguration({ maxProcessingTimePerFileMinutes: value })} />
+              <ConfigSelect label="Concurrency limit" value={configuration.concurrencyLimit} options={[["auto", "Auto"], ["1", "1"], ["2", "2"], ["5", "5"], ["10", "10"]]} onChange={(value) => onUpdateConfiguration({ concurrencyLimit: value as ParseConfiguration["concurrencyLimit"] })} />
+              <ToggleRow label="Parallel processing" checked={configuration.parallelProcessing} onClick={() => onUpdateConfiguration({ parallelProcessing: !configuration.parallelProcessing })} />
+              <NumberStepper label="Max parallel files" value={configuration.maxParallelFiles} min={1} max={20} onChange={(value) => onUpdateConfiguration({ maxParallelFiles: value })} />
+              <ToggleRow label="Retry failed files" checked={configuration.retryFailedFiles} onClick={() => onUpdateConfiguration({ retryFailedFiles: !configuration.retryFailedFiles })} />
+              <NumberStepper label="Retry attempts" value={configuration.retryAttempts} min={0} max={5} onChange={(value) => onUpdateConfiguration({ retryAttempts: value })} />
+            </div>
+          </AdvancedSection>
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
@@ -1054,14 +1481,30 @@ function UploadedFileList({
   );
 }
 
-function UploadSummary({ files, fileTypes }: { files: UploadedFile[]; fileTypes: Array<{ type: string; count: number }> }) {
+function UploadSummary({
+  agentInstruction,
+  files,
+  fileTypes,
+}: {
+  agentInstruction: string;
+  files: UploadedFile[];
+  fileTypes: Array<{ type: string; count: number }>;
+}) {
   const uploaded = files.filter((file) => file.status === "uploaded").length;
+  const trimmedInstruction = agentInstruction.trim();
   return (
     <Card className="p-4">
       <SectionHeader title="Parsing summary" />
       <div className="mt-4 space-y-4">
         <SummaryRow icon={FileText} title="Detected file types" value={fileTypes.length ? String(fileTypes.length) : "0"} detail={fileTypes.length ? fileTypes.map((item) => item.type.toUpperCase()).join(", ") : "See preview for details"} />
         <SummaryRow icon={CheckCircle2} title="Intake checks passed" value={`${uploaded} / ${files.length || 0}`} detail={uploaded ? "All uploaded files scanned and validated" : "Waiting for upload"} success />
+        <SummaryRow
+          icon={MessageSquareText}
+          title="Agent instruction"
+          value={trimmedInstruction ? "Provided" : "Optional"}
+          detail={trimmedInstruction ? summarizeInstruction(trimmedInstruction) : "Add instructions to guide the agent."}
+          success={Boolean(trimmedInstruction)}
+        />
         <SummaryRow icon={ShieldCheck} title="Governance" value="" detail="Policy: Default Parsing Policy. Data will be handled in accordance with organizational policies." />
         <SummaryRow icon={Settings2} title="What happens next" value="" detail="We'll profile your files and generate parser recommendations tailored to your content." />
       </div>
@@ -1069,19 +1512,30 @@ function UploadSummary({ files, fileTypes }: { files: UploadedFile[]; fileTypes:
   );
 }
 
-function ConfigureSummary({ configuration, plan }: { configuration: ParseConfiguration; plan: ParsingPlan | null }) {
+function ConfigureSummary({
+  configuration,
+  files,
+  plan,
+}: {
+  configuration: ParseConfiguration;
+  files: UploadedFile[];
+  plan: ParsingPlan | null;
+}) {
+  const expectedOutputs = configuration.selectedAssets.map(labelForGeneratedAssetKind);
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   return (
-    <Card className="p-4">
+    <Card className="sticky top-24 h-fit p-4">
       <SectionHeader title="Configuration summary" />
       <div className="mt-4 space-y-3">
         <div className="rounded-md border border-border p-3">
           <p className="text-sm font-bold text-ink">Expected outputs</p>
           <div className="mt-3 space-y-2">
-            {(plan?.expectedOutputs ?? ["Text content & structure", "Metadata & key properties", "Sections, pages, and tables"]).slice(0, 4).map((output) => (
+            {expectedOutputs.slice(0, 5).map((output) => (
               <p key={output} className="flex items-center gap-2 text-xs text-muted">
                 <CheckCircle2 className="h-4 w-4 text-success" /> {output}
               </p>
             ))}
+            {expectedOutputs.length > 5 ? <p className="text-xs font-bold text-info">+{expectedOutputs.length - 5} more</p> : null}
           </div>
         </div>
         <div className="rounded-md border border-border p-3">
@@ -1093,6 +1547,7 @@ function ConfigureSummary({ configuration, plan }: { configuration: ParseConfigu
         <SummaryMetric icon={FileText} label="Estimated cost" value={plan?.estimatedCost ?? "~ $0.04"} detail="± 15%" tone="neutral" />
         <SummaryMetric icon={Timer} label="Estimated turnaround" value={plan?.estimatedDuration ?? "~ 2 min 30 sec"} detail="± 30 sec" tone="neutral" />
         <SummaryMetric icon={ShieldCheck} label="Policy coverage" value={plan?.policyCoverage ?? "High (92%+)"} detail="Based on current configuration" tone="success" />
+        <SummaryMetric icon={FileCheck2} label="Files ready" value={`${files.length} file${files.length === 1 ? "" : "s"}`} detail={`Total size: ${formatBytes(totalSize)}`} tone="info" />
       </div>
     </Card>
   );
@@ -1275,6 +1730,101 @@ function ToggleRow({ checked, label, onClick }: { checked: boolean; label: strin
   );
 }
 
+function AdvancedSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="space-y-3 rounded-md border border-border p-3">
+      <p className="text-sm font-bold text-ink">{title}</p>
+      {children}
+    </section>
+  );
+}
+
+function NumberStepper({
+  label,
+  max,
+  min,
+  onChange,
+  step = 1,
+  suffix,
+  value,
+}: {
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  step?: number;
+  suffix?: string;
+  value: number;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-bold text-muted">{label}</span>
+      <span className="flex h-9 overflow-hidden rounded-md border border-border bg-white">
+        <input
+          className="min-w-0 flex-1 px-3 text-sm font-semibold text-ink outline-none"
+          max={max}
+          min={min}
+          step={step}
+          type="number"
+          value={value}
+          onChange={(event) => onChange(clamp(Number(event.target.value)))}
+        />
+        {suffix ? <span className="grid place-items-center border-l border-border px-3 text-xs font-bold text-muted">{suffix}</span> : null}
+        <button className="w-9 border-l border-border font-bold text-ink" type="button" onClick={() => onChange(clamp(value - step))}>-</button>
+        <button className="w-9 border-l border-border font-bold text-ink" type="button" onClick={() => onChange(clamp(value + step))}>+</button>
+      </span>
+    </label>
+  );
+}
+
+function DecimalField({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-bold text-muted">{label}</span>
+      <input
+        className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold text-ink outline-none focus:border-accent"
+        max={1}
+        min={0}
+        step={0.01}
+        type="number"
+        value={value}
+        onChange={(event) => onChange(Math.min(1, Math.max(0, Number(event.target.value))))}
+      />
+    </label>
+  );
+}
+
+function CheckboxRow({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex h-9 items-center gap-2 text-sm font-semibold text-ink">
+      <input
+        checked={checked}
+        className="h-4 w-4 accent-orange-600"
+        type="checkbox"
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}
+
 function SummaryRow({
   detail,
   icon: Icon,
@@ -1451,6 +2001,52 @@ function Toast({
 
 function ErrorBox({ message }: { message: string }) {
   return <div className="mt-3 rounded-lg border border-red-200 bg-danger-soft p-3 text-sm text-red-700">{message}</div>;
+}
+
+function summarizeInstruction(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+}
+
+function shortReason(value: string | undefined): string {
+  if (!value) return "--";
+  return value.length > 86 ? `${value.slice(0, 83)}...` : value;
+}
+
+function firstAgentInterpretation(plan: ParsingPlan | null): Record<string, unknown> | null {
+  return plan?.recommendations.find((item) => item.agentInterpretation && Object.keys(item.agentInterpretation).length > 0)?.agentInterpretation ?? null;
+}
+
+function labelForAssetId(assetId: string): string {
+  return assetId
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function labelForGeneratedAssetKind(assetId: GeneratedAssetKind): string {
+  return outputAssetOptions.find((asset) => asset.id === assetId)?.label ?? labelForAssetId(assetId);
+}
+
+function configurationLabelsFromPlan(plan: ParsingPlan | null): string[] {
+  return plan?.expectedOutputs?.length ? plan.expectedOutputs : ["Parsed Content", "Structure", "Tables", "Quality Report", "Lineage"];
+}
+
+function presetForAssets(
+  assets: GeneratedAssetKind[],
+  currentPreset: ParseConfiguration["outputPreset"],
+): ParseConfiguration["outputPreset"] {
+  const normalized = assets.join("|");
+  const knownPresets: Array<ParseConfiguration["outputPreset"]> = ["balanced", "structured", "search", "graph"];
+  const matchingPreset = knownPresets.find((preset) => defaultAssetsForPreset(preset).join("|") === normalized);
+  return matchingPreset ?? (currentPreset === "custom" ? "custom" : "custom");
+}
+
+function defaultAssetsForPreset(preset: ParseConfiguration["outputPreset"]): GeneratedAssetKind[] {
+  if (preset === "structured") return ["parsed_content", "document_structure", "tables", "entities", "quality_report", "lineage"];
+  if (preset === "search") return ["parsed_content", "document_structure", "chunks", "vectors", "evidence", "quality_report", "lineage"];
+  if (preset === "graph") return ["parsed_content", "document_structure", "entities", "relationships", "knowledge_graph", "evidence", "lineage"];
+  return ["parsed_content", "document_structure", "tables", "quality_report", "lineage"];
 }
 
 function summarizeFileTypes(files: UploadedFile[]): Array<{ type: string; count: number }> {

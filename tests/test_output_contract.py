@@ -125,3 +125,60 @@ def test_output_contract_manifest_includes_every_selected_asset_even_when_empty(
     assert manifest["user_defined_extraction"]["status"] == "ready"
     assert manifest["user_defined_extraction"]["count"] == 1
     assert contract["structured_data"]["summary_asset"]["method"] == "ranked_extractive"
+
+
+def test_output_contract_respects_chunking_configuration() -> None:
+    contract = output_contract_builder.build(
+        file_record=SimpleNamespace(
+            id="file-2",
+            original_filename="chunked.pdf",
+            mime_type="application/pdf",
+            file_type="pdf",
+            size_bytes=1024,
+            checksum_sha256="def456",
+            storage_path="storage/chunked.pdf",
+        ),
+        execution_result=SimpleNamespace(
+            id="execution-2",
+            parser_id="pdf_native_text",
+            output_payload={
+                "parsed_text": " ".join(f"token-{index}" for index in range(120)),
+                "layout_blocks": [],
+                "tables": [],
+                "structured_data": {},
+            },
+            duration_ms=25,
+        ),
+        quality_report=SimpleNamespace(
+            id="quality-2",
+            quality_status="passed",
+            parser_confidence=0.9,
+            extraction_confidence=0.9,
+            schema_validation_score=1.0,
+            completeness_score=0.9,
+            consistency_score=0.9,
+            human_review_required=False,
+            quality_explanation="Passed.",
+        ),
+        plan=SimpleNamespace(
+            id="plan-2",
+            selected_parser_id="pdf_native_text",
+            selected_skill_id=None,
+            output_contract={
+                "selected_asset_types": ["parsed_content", "chunks", "vectors"],
+                "max_chunk_size": 120,
+                "chunk_overlap": 10,
+                "chunking_strategy": "fixed_size",
+            },
+            cost_profile={},
+        ),
+        fallback_used=False,
+        audit_events=[],
+    )
+
+    chunks = contract["chunks"]
+    assert len(chunks) > 1
+    assert chunks[0]["metadata"]["chunk_size"] == 120
+    assert chunks[0]["metadata"]["overlap"] == 10
+    assert chunks[0]["metadata"]["strategy"] == "fixed_size"
+    assert contract["structured_data"]["vector_asset"]["vector_count"] == len(chunks)

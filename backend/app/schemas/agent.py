@@ -49,6 +49,7 @@ class AgentTaskCreate(APIModel):
     asset_id: str | None = None
     url: str | None = None
     text_payload: str | None = None
+    agent_instruction: str | None = None
     requested_output_contract: dict[str, object] = Field(default_factory=dict)
     governance_constraints: dict[str, object] = Field(default_factory=dict)
     quality_target: QualityTarget = QualityTarget.BALANCED

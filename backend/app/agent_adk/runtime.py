@@ -282,6 +282,9 @@ class DeterministicMultimodalParserAdkAgent(BaseAgent):
             execution_result=best_result,
             threshold=plan.quality_threshold,
             final=True,
+            route_to_review=bool(
+                plan.human_review_policy.get("create_review_item_below_threshold", True)
+            ),
         )
         checkpoint()
 
@@ -358,6 +361,8 @@ class DeterministicMultimodalParserAdkAgent(BaseAgent):
             quality_threshold=plan.quality_threshold,
             result=primary_result,
             fallback_parser_id=plan.fallback_parser_id,
+            fallback_policy=str(plan.human_review_policy.get("fallback_policy") or ""),
+            max_fallback_attempts=int(plan.human_review_policy.get("max_fallback_attempts", 1)),
         ):
             emit(
                 "repair.skipped",

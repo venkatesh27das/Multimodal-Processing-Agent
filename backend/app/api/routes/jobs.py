@@ -7,7 +7,14 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.domain.enums import CostProfile, JobStatus, LatencyProfile, QualityStatus, QualityTarget, ReviewStatus
+from backend.app.domain.enums import (
+    CostProfile,
+    JobStatus,
+    LatencyProfile,
+    QualityStatus,
+    QualityTarget,
+    ReviewStatus,
+)
 from backend.app.models.domain import (
     AgentArtifact,
     AgentDecision,
@@ -30,6 +37,7 @@ from backend.app.models.domain import (
 )
 from backend.app.models.file import FileRecord
 from backend.app.models.job import ParseJob
+from backend.app.schemas.agent import AgentTaskCreate
 from backend.app.schemas.common import APIModel
 from backend.app.schemas.domain import (
     ParsedAssetRead,
@@ -40,8 +48,8 @@ from backend.app.schemas.domain import (
     ParsingPlanRead,
     QualityReportRead,
 )
-from backend.app.schemas.agent import AgentTaskCreate
 from backend.app.schemas.jobs import ParseJobCreate, ParseJobResponse
+from backend.app.services.agent_instruction_interpreter import agent_instruction_interpreter
 from backend.app.services.agent_task_worker import agent_task_worker
 from backend.app.services.audit_logger import audit_logger
 from backend.app.services.multimodal_parser_agent import multimodal_parser_agent
@@ -130,15 +138,25 @@ def plan_parse_job(
     if file_profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File profile not found")
 
+    (
+        requested_output_contract,
+        governance_constraints,
+        interpretation,
+    ) = agent_instruction_interpreter.enrich(
+        requested_output_contract=payload.requested_output_contract,
+        governance_constraints=payload.governance_constraints,
+        agent_instruction=payload.agent_instruction,
+    )
     try:
         return parser_selector.plan(
             db,
             file_profile=file_profile,
-            requested_output_contract=payload.requested_output_contract,
+            requested_output_contract=requested_output_contract,
             quality_target=payload.quality_target,
             cost_profile=payload.cost_profile,
             latency_profile=payload.latency_profile,
-            governance_constraints=payload.governance_constraints,
+            governance_constraints=governance_constraints,
+            agent_interpretation=interpretation.to_dict() if interpretation else {},
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -321,7 +339,11 @@ def get_job(job_id: str, db: Session = Depends(get_db)) -> ParseJobRead:
     return job
 
 
-@planning_router.post("/{job_id}/retry", response_model=ParseJobRead, status_code=status.HTTP_201_CREATED)
+@planning_router.post(
+    "/{job_id}/retry",
+    response_model=ParseJobRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def retry_job(job_id: str, db: Session = Depends(get_db)) -> ParseJobRead:
     original_job = db.get(ParseJob, job_id)
     if original_job is None:
@@ -396,7 +418,11 @@ def send_job_to_review(job_id: str, db: Session = Depends(get_db)) -> ParseJobRe
             file_id=job.file_id,
             quality_report_id=quality.id if quality else None,
             status=ReviewStatus.OPEN.value,
-            reason=quality.quality_explanation if quality else "Manual review requested from Run History.",
+            reason=(
+                quality.quality_explanation
+                if quality
+                else "Manual review requested from Run History."
+            ),
         )
         db.add(review_item)
         db.flush()
@@ -543,9 +569,13 @@ def _filtered_jobs_query(
         elif status_filter == "review_required":
             query = query.filter(ParseJob.status == JobStatus.REVIEW_REQUIRED.value)
         elif status_filter == "running":
-            query = query.filter(ParseJob.status.in_([JobStatus.RUNNING.value, JobStatus.PLANNING.value]))
+            query = query.filter(
+                ParseJob.status.in_([JobStatus.RUNNING.value, JobStatus.PLANNING.value])
+            )
         elif status_filter == "queued":
-            query = query.filter(ParseJob.status.in_([JobStatus.QUEUED.value, JobStatus.REGISTERED.value]))
+            query = query.filter(
+                ParseJob.status.in_([JobStatus.QUEUED.value, JobStatus.REGISTERED.value])
+            )
         else:
             query = query.filter(ParseJob.status == status_filter)
     if file_type and file_type != "all":

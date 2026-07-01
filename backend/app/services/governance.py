@@ -99,6 +99,7 @@ class PolicyChecker:
         file_record: FileRecord,
         file_profile: FileProfile,
         governance_constraints: dict[str, object],
+        agent_interpretation: dict[str, object] | None = None,
     ) -> GovernanceReport:
         findings = [
             *self.pii_detector.detect(file_record),
@@ -112,6 +113,36 @@ class PolicyChecker:
                     code="policy.pii_not_allowed",
                     severity="high",
                     message="Potential PII conflicts with the request policy.",
+                )
+            )
+        sensitivity_handling = governance_constraints.get("sensitivity_handling")
+        if sensitivity_handling and sensitivity_handling != "none":
+            findings.append(
+                GovernanceFinding(
+                    code="policy.sensitivity_handling",
+                    severity="info",
+                    message="Sensitivity handling policy was applied.",
+                    metadata={
+                        "sensitivity_handling": sensitivity_handling,
+                        "redaction_confidence_threshold": governance_constraints.get(
+                            "redaction_confidence_threshold",
+                            0.85,
+                        ),
+                        "phi_handling": governance_constraints.get("phi_handling", "mask_tokenize"),
+                        "audit_sensitive_detections": governance_constraints.get(
+                            "audit_sensitive_detections",
+                            True,
+                        ),
+                    },
+                )
+            )
+        if agent_interpretation:
+            findings.append(
+                GovernanceFinding(
+                    code="policy.agent_instruction_interpreted",
+                    severity="info",
+                    message="Agent instruction interpretation was included in governance context.",
+                    metadata=agent_interpretation,
                 )
             )
 
