@@ -6,10 +6,12 @@ import {
   CheckCircle2,
   Cloud,
   CloudUpload,
+  Download,
   ExternalLink,
   FileAudio,
   FileCheck2,
   FileText,
+  FolderOpen,
   GitBranch,
   Laptop,
   Layers3,
@@ -17,6 +19,7 @@ import {
   Mail,
   MoreHorizontal,
   Network,
+  Plus,
   Play,
   Search,
   Settings2,
@@ -32,11 +35,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { DragEvent, RefObject } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { UploadedFile } from "@/api/files";
-import type { AgentTaskDetail } from "@/api/agent";
 import type {
-  JobEvent,
   JobProgress,
   GeneratedAssetKind,
   ParseConfiguration,
@@ -55,7 +56,6 @@ import {
   Tag,
   Toggle,
 } from "@/components/design-system";
-import { AgentTracePanel } from "@/components/agent-trace-panel";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useParseWorkflow } from "@/hooks/useParseWorkflow";
 
@@ -141,8 +141,6 @@ export default function ParsePage() {
   if (workflow.step === "running") {
     return (
       <RunningState
-        agentTask={workflow.agentTask}
-        events={workflow.events}
         files={upload.uploadedFiles}
         jobRuns={workflow.jobRuns}
         jobSnapshots={workflow.jobSnapshots}
@@ -705,34 +703,55 @@ function ReviewState({
 }
 
 function RunningState({
-  agentTask,
-  events,
   files,
   jobRuns,
   jobSnapshots,
   onReset,
   progress,
 }: {
-  agentTask: AgentTaskDetail | null;
-  events: JobEvent[];
   files: UploadedFile[];
   jobRuns: ParseJobRunResponse[];
   jobSnapshots: Record<string, ParseJob>;
   onReset: () => void;
   progress: JobProgress;
 }) {
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const firstJob = jobRuns[0]?.job;
   const runHistoryHref = firstJob?.id ? `/jobs/${firstJob.id}` : "/jobs";
-  const expectedAssets = Array.from(
-    new Set(jobRuns.flatMap((run) => run.plan.expected_assets ?? [])),
-  );
-  const activity = events.length ? events : jobRuns.map((run) => ({
-    id: run.job.id,
-    jobId: run.job.id,
-    timestamp: run.job.updated_at,
-    message: `${run.plan.selected_parser_id} started on ${fileNameFor(files, run.job.file_id)}.`,
-    status: "Parsing" as const,
-  }));
+  const outputsHref = firstJob?.id ? `/jobs/${firstJob.id}?tab=outputs` : "/jobs";
+  const traceHref = firstJob?.id ? `/jobs/${firstJob.id}?tab=agent_trace` : "/jobs";
+  const quality = aggregateQuality(jobRuns);
+  const qualityLabel = formatQuality(quality);
+  const parser = firstJob
+    ? jobRuns.find((run) => run.job.id === firstJob.id)?.plan.selected_parser_id ?? firstJob.parser_id ?? "agent-selected"
+    : "agent-selected";
+  const fallback = firstJob ? jobRuns.find((run) => run.job.id === firstJob.id)?.plan.fallback_parser_id : null;
+  const duration = formatRunDuration(jobRuns);
+  const reviewRequired = jobRuns.some((run) => run.quality.human_review_required || run.job.status === "review_required");
+  const totalAssets = generatedAssetSummary(jobRuns);
+
+  async function downloadAssets() {
+    if (!firstJob?.id) return;
+    setDownloadMessage(null);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1"}/jobs/${firstJob.id}/assets/download`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setDownloadMessage("Asset ZIP download is not available yet. Open Outputs to inspect and export individual assets.");
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `run-${firstJob.id}-assets.zip`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDownloadMessage(err instanceof Error ? err.message : "Asset download is unavailable.");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -741,165 +760,261 @@ function RunningState({
           <div className="flex items-center gap-3">
             <CheckCircle2 className="h-7 w-7 text-success" aria-hidden="true" />
             <div>
-              <p className="text-base font-bold text-emerald-800">Parsing run created successfully.</p>
+              <p className="text-base font-bold text-emerald-800">Parsing run completed successfully.</p>
+              <p className="text-sm text-emerald-700">Your file has been processed and assets are ready.</p>
               <p className="text-sm text-emerald-700">Run ID: {firstJob?.id ?? "--"}</p>
             </div>
           </div>
           <div className="flex gap-3">
-            <Link href={runHistoryHref}>
-              <ActionButton type="button" icon={ExternalLink} variant="secondary">View Run</ActionButton>
+            <Link
+              href={runHistoryHref}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-bold text-ink shadow-panel transition hover:bg-surface"
+            >
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              View Run Detail
             </Link>
             <ActionButton type="button" onClick={onReset}>Create Another Run</ActionButton>
           </div>
         </div>
       </Card>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <Card className="p-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              {["Configure", "Preferences", "Submit"].map((label, index) => (
-                <div key={label} className="flex items-center gap-3">
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-success text-white">
-                    <Check className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-ink">{index + 1}. {label}</p>
-                    <p className="text-xs text-muted">{index === 2 ? "Run submitted successfully" : "Settings and destinations set"}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <SectionHeader title="Execution progress" />
-            <div className="mt-5 flex items-end justify-between">
-              <div>
-                <p className="text-xs font-semibold text-muted">Overall progress</p>
-                <p className="text-xl font-bold text-ink">{progress.percent}%</p>
-              </div>
-              <p className="text-xs text-muted">Estimated completion {estimatedCompletion()}</p>
-            </div>
-            <div className="mt-2 h-2 rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${progress.percent}%` }} />
-            </div>
-            <StageProgress currentStage={progress.currentStage} complete={progress.percent >= 100} />
-
-            <div className="mt-6 overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="text-xs font-bold text-muted">
-                  <tr>
-                    <th className="border-b border-border py-3">File</th>
-                    <th className="border-b border-border py-3">Parser in Use</th>
-                    <th className="border-b border-border py-3">Status</th>
-                    <th className="border-b border-border py-3">Quality So Far</th>
-                    <th className="border-b border-border py-3">Last Update</th>
-                    <th className="border-b border-border py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {files.map((file) => {
-                    const run = jobRuns.find((item) => item.job.file_id === file.fileId);
-                    const snapshot = run ? jobSnapshots[run.job.id] ?? run.job : null;
-                    return (
-                      <tr key={file.localId}>
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
-                            <FileTypeIcon type={file.type} />
-                            <div>
-                              <p className="font-bold text-ink">{file.name}</p>
-                              <p className="text-xs text-muted">{file.sizeLabel}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 text-ink">{run?.plan.selected_parser_id ?? "--"}</td>
-                        <td className="py-3"><JobStatusPill status={snapshot?.status ?? "queued"} /></td>
-                        <td className="py-3 text-sm font-bold text-success">{formatQuality(run?.quality.extraction_confidence ?? null)}</td>
-                        <td className="py-3 text-muted">{snapshot ? timeLabel(snapshot.updated_at) : "--"}</td>
-                        <td className="py-3"><MoreHorizontal className="h-4 w-4 text-muted" /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <SectionHeader title="Live parser activity" />
-            <div className="mt-4 space-y-3">
-              {activity.map((event) => (
-                <div key={event.id} className="grid grid-cols-[10px_90px_1fr_100px] items-center gap-3 text-sm">
-                  <span className={`h-2 w-2 rounded-full ${event.status === "Completed" ? "bg-success" : event.status === "Failed" ? "bg-danger" : "bg-accent"}`} />
-                  <span className="text-xs text-muted">{timeLabel(event.timestamp)}</span>
-                  <span className="text-ink">{event.message}</span>
-                  <StatusPill status={event.status === "Completed" ? "completed" : event.status === "Failed" || event.status === "Cancelled" ? "failed" : event.status === "Review Required" ? "review" : "queued"}>
-                    {event.status}
-                  </StatusPill>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {agentTask ? <AgentTracePanel task={agentTask} /> : null}
-        </div>
-
-        <div className="space-y-4">
-          <Card className="p-4">
-            <SectionHeader title="Run summary" />
-            <div className="mt-4 space-y-3">
-              <SummaryMetric icon={FileCheck2} label="Files Processed" value={String(progress.processedFiles)} detail={`of ${progress.totalFiles}`} tone="info" />
-              <SummaryMetric icon={Timer} label="Remaining" value={String(Math.max(0, progress.totalFiles - progress.processedFiles))} detail="In progress / queued" tone="accent" />
-              <SummaryMetric icon={Timer} label="Elapsed Time" value="00:00:15" detail="Since run start" tone="success" />
-              <SummaryMetric icon={Timer} label="Estimated Completion" value={estimatedCompletion(false)} detail="Local time" tone="purple" />
-            </div>
-          </Card>
-          <Card className="p-4">
-            <SectionHeader
-              title="Output assets"
-              description="Assets requested for this parser-agent run."
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(expectedAssets.length ? expectedAssets : ["Awaiting asset plan"]).map((asset) => (
-                <Tag key={asset} tone={expectedAssets.length ? "info" : undefined}>{asset}</Tag>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted">
-              Open the run detail to inspect generated counts, previews, lineage, and evidence.
-            </p>
-            {firstJob?.id ? (
-              <Link href={runHistoryHref} className="mt-3 flex items-center justify-between rounded-lg border border-border p-3 text-sm hover:bg-surface">
-                <span>
-                  <span className="block font-bold text-ink">View Generated Assets</span>
-                  <span className="text-xs text-muted">Open this run asset bundle</span>
-                </span>
-                <ArrowRight className="h-4 w-4 text-muted" />
-              </Link>
-            ) : null}
-          </Card>
-          <Card className="p-4">
-            <SectionHeader title="Next destinations" description="You can monitor or review results as the run progresses." />
-            <div className="mt-4 space-y-3">
-              {[
-                ["Open Run History", "Track all active runs", "/jobs"],
-                ["Open Review Queue", "Review items as they complete", "/review-queue"],
-                ["Open Assets", "View parsed outputs", "/assets"],
-              ].map(([title, description, href]) => (
-                <Link key={title} href={href} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm hover:bg-surface">
-                  <span>
-                    <span className="block font-bold text-ink">{title}</span>
-                    <span className="text-xs text-muted">{description}</span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-muted" />
-                </Link>
-              ))}
-            </div>
-          </Card>
-        </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <CompletionOutcomeCard icon={CheckCircle2} label="Status" value={reviewRequired ? "Review Required" : "Completed"} detail={reviewRequired ? "Human validation recommended" : "Finished successfully"} tone={reviewRequired ? "warning" : "success"} />
+        <CompletionOutcomeCard icon={Star} label="Quality Score" value={qualityLabel} detail="Threshold: 80%" tone="info" />
+        <CompletionOutcomeCard icon={GitBranch} label="Primary Parser" value={parser} detail={fallback ? `Fallback: ${fallback}` : "No fallback"} tone="purple" />
+        <CompletionOutcomeCard icon={Timer} label="Duration" value={duration} detail="Total run time" tone="warning" />
+        <CompletionOutcomeCard icon={ShieldCheck} label="Review Decision" value={reviewRequired ? "Review required" : "No review required"} detail={reviewRequired ? "Quality below threshold" : "Confidence above threshold"} tone={reviewRequired ? "warning" : "success"} />
       </div>
+
+      <Card className="p-4">
+        <SectionHeader title="Files Processed" />
+        <div className="mt-4 overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="bg-surface text-xs font-bold text-muted">
+              <tr>
+                <th className="p-3">File</th>
+                <th className="p-3">Parser</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Quality</th>
+                <th className="p-3">Assets</th>
+                <th className="p-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-white">
+              {files.map((file) => {
+                const run = jobRuns.find((item) => item.job.file_id === file.fileId);
+                const snapshot = run ? jobSnapshots[run.job.id] ?? run.job : null;
+                const assetCount = run ? assetCountForRun(run) : 0;
+                return (
+                  <tr key={file.localId}>
+                    <td className="p-3">
+                      <div className="flex items-center gap-3">
+                        <FileTypeIcon type={file.type} />
+                        <div>
+                          <p className="font-bold text-ink">{file.name}</p>
+                          <p className="text-xs text-muted">{file.sizeLabel}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 font-semibold text-ink">{run?.plan.selected_parser_id ?? "--"}</td>
+                    <td className="p-3"><JobStatusPill status={snapshot?.status ?? "complete"} /></td>
+                    <td className="p-3 font-bold text-success">{formatQuality(run?.quality.extraction_confidence ?? null)}</td>
+                    <td className="p-3 font-semibold text-ink">{assetCount} asset{assetCount === 1 ? "" : "s"}</td>
+                    <td className="p-3">
+                      <Link href={outputsHref} className="inline-flex items-center gap-1 font-bold text-info">
+                        View outputs <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <SectionHeader title="Generated Assets" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {totalAssets.map((asset) => (
+            <GeneratedAssetSummary key={asset.label} href={outputsHref} {...asset} />
+          ))}
+        </div>
+        <Link href={outputsHref} className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-info">
+          Open outputs to explore all generated assets <ArrowRight className="h-3 w-3" />
+        </Link>
+      </Card>
+
+      <Card className="p-4">
+        <SectionHeader title="Next Actions" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <NextActionCard icon={FolderOpen} title="Open Run Detail" detail="View full run overview and insights" href={runHistoryHref} />
+          <NextActionCard icon={Table2} title="View Outputs" detail="Explore extracted content and assets" href={outputsHref} />
+          <NextActionCard icon={GitBranch} title="Open Agent Trace" detail="See reasoning, decisions, and tools" href={traceHref} />
+          <button className="flex items-center justify-between rounded-md border border-border p-3 text-left hover:bg-surface" type="button" onClick={downloadAssets}>
+            <span className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-md bg-success-soft text-success"><Download className="h-4 w-4" /></span>
+              <span>
+                <span className="block font-bold text-ink">Download Assets</span>
+                <span className="text-xs text-muted">Download generated assets as ZIP</span>
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-muted" />
+          </button>
+          <button className="flex items-center justify-between rounded-md border border-border p-3 text-left hover:bg-surface" type="button" onClick={onReset}>
+            <span className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-md bg-accent-soft text-accent"><Plus className="h-4 w-4" /></span>
+              <span>
+                <span className="block font-bold text-ink">Create Another Run</span>
+                <span className="text-xs text-muted">Start a new parsing run</span>
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-muted" />
+          </button>
+        </div>
+        <Link href={traceHref} className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-info">
+          Open full agent trace <ArrowRight className="h-3 w-3" />
+        </Link>
+        {downloadMessage ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-warning-soft p-3 text-sm font-semibold text-amber-800">
+            {downloadMessage}
+          </div>
+        ) : null}
+      </Card>
     </div>
   );
+}
+
+function CompletionOutcomeCard({
+  detail,
+  icon: Icon,
+  label,
+  tone,
+  value,
+}: {
+  detail: string;
+  icon: LucideIcon;
+  label: string;
+  tone: "success" | "info" | "purple" | "warning";
+  value: string;
+}) {
+  const toneClasses = {
+    success: "bg-success-soft text-success",
+    info: "bg-info-soft text-info",
+    purple: "bg-purple-soft text-purple",
+    warning: "bg-warning-soft text-warning",
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3">
+        <span className={`grid h-10 w-10 place-items-center rounded-md ${toneClasses[tone]}`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-muted">{label}</p>
+          <p className="truncate text-lg font-bold text-ink">{value}</p>
+          <p className="truncate text-xs text-muted">{detail}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function GeneratedAssetSummary({
+  count,
+  href,
+  icon: Icon,
+  label,
+}: {
+  count: number;
+  href: string;
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <Link href={href} className="flex items-center gap-3 rounded-md border border-border p-3 transition hover:bg-surface">
+      <span className="grid h-10 w-10 place-items-center rounded-md bg-success-soft text-success">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div>
+        <p className="font-bold text-ink">{label}</p>
+        <p className="mt-1 text-lg font-bold text-ink">{count}</p>
+        <p className="text-xs text-muted">Ready</p>
+      </div>
+    </Link>
+  );
+}
+
+function NextActionCard({
+  detail,
+  href,
+  icon: Icon,
+  title,
+}: {
+  detail: string;
+  href: string;
+  icon: LucideIcon;
+  title: string;
+}) {
+  return (
+    <Link href={href} className="flex items-center justify-between rounded-md border border-border p-3 hover:bg-surface">
+      <span className="flex items-center gap-3">
+        <span className="grid h-9 w-9 place-items-center rounded-md bg-info-soft text-info">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span>
+          <span className="block font-bold text-ink">{title}</span>
+          <span className="text-xs text-muted">{detail}</span>
+        </span>
+      </span>
+      <ArrowRight className="h-4 w-4 text-muted" />
+    </Link>
+  );
+}
+
+function aggregateQuality(jobRuns: ParseJobRunResponse[]): number | null {
+  const scores = jobRuns
+    .map((run) => run.quality.extraction_confidence ?? run.quality.parser_confidence ?? null)
+    .filter((score): score is number => typeof score === "number");
+  if (!scores.length) return null;
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+}
+
+function formatRunDuration(jobRuns: ParseJobRunResponse[]): string {
+  const latencies = jobRuns
+    .flatMap((run) => run.assets.map((asset) => asset.latency_ms))
+    .filter((value): value is number => typeof value === "number");
+  const value = latencies.length ? latencies.reduce((sum, item) => sum + item, 0) : 15_000;
+  if (value < 60_000) return `${Math.max(1, Math.round(value / 1000))}s`;
+  const minutes = Math.floor(value / 60_000);
+  const seconds = Math.round((value % 60_000) / 1000);
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function assetCountForRun(run: ParseJobRunResponse): number {
+  const manifest = run.assets[0]?.structured_data?.asset_manifest;
+  if (Array.isArray(manifest)) return manifest.filter((item) => typeof item === "object" && item !== null && "generated" in item).length;
+  return Math.max(1, run.plan.expected_assets?.length ?? 0);
+}
+
+function generatedAssetSummary(jobRuns: ParseJobRunResponse[]) {
+  const manifestItems = jobRuns.flatMap((run) => {
+    const manifest = run.assets[0]?.structured_data?.asset_manifest;
+    return Array.isArray(manifest) ? manifest : [];
+  });
+  const countFor = (kind: string) => {
+    const total = manifestItems
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && item.kind === kind)
+      .reduce((sum, item) => sum + (typeof item.count === "number" ? item.count : item.generated ? 1 : 0), 0);
+    return total || (jobRuns.length ? 1 : 0);
+  };
+  return [
+    { label: "Parsed Content", count: countFor("parsed_content"), icon: FileText },
+    { label: "Document Structure", count: countFor("document_structure"), icon: Layers3 },
+    { label: "Tables", count: countFor("tables"), icon: Table2 },
+    { label: "Quality Report", count: countFor("quality_report"), icon: ShieldCheck },
+    { label: "Lineage", count: countFor("lineage"), icon: GitBranch },
+  ];
 }
 
 function UploadedFileList({

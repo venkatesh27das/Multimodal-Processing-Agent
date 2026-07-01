@@ -208,6 +208,7 @@ export type ParsedAsset = BackendParsedAsset & {
   chunks?: Array<Record<string, unknown>>;
   entities?: Array<Record<string, unknown>>;
   relationships?: Array<Record<string, unknown>>;
+  structured_data?: Record<string, unknown>;
 };
 
 export type ParseJobRunResponse = {

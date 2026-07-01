@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -58,6 +58,7 @@ const jobDetailTabs: Array<{ id: JobDetailTab; label: string }> = [
 
 export default function JobDetailPage({ params }: { params: { job_id: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<DetailState | null>(null);
   const [agentTask, setAgentTask] = useState<AgentTaskDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +89,13 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   useEffect(() => {
     loadDetail(params.job_id);
   }, [loadDetail, params.job_id]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "overview" || tab === "outputs" || tab === "agent_trace") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const detail = data;
   const firstAsset = detail?.assets[0] ?? null;
