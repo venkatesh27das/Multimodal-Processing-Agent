@@ -72,6 +72,18 @@ flowchart TD
 | Human-in-the-loop review | Run quality policy plus Review Queue | Review requests, uncertain fields, audit events. |
 | Parser operations console | `make api` + `make web` | Run History, Outputs Review, Agent Trace, Observability. |
 
+## Latest Experience
+
+The product now behaves less like a form-driven parser and more like an agent workbench:
+
+- New Run starts with an optional natural-language instruction. Users can tell the agent what outcome they want, or use quick chips such as Extract tables, Make search-ready, Prepare KG-ready assets, Summarize content, Validate invoice fields, and Extract contract clauses.
+- The backend interprets that instruction into an objective, recommended outputs, skills, fallback posture, and review guidance. The interpretation is carried through planning and run creation.
+- Configure is now a compact agent-recommended plan: objective cards, per-file parser strategy, output preset summary, smart configuration, and a collapsed Advanced Options panel.
+- Output assets are customized through a drawer instead of a large always-visible grid.
+- Advanced controls are first-class configuration inputs, including parser override, skill override, fallback policy, quality threshold, review policy, chunking, embeddings, sensitivity handling, retries, and performance preferences.
+- New Run completed state is a concise action page with run status, quality, parser, duration, files processed, generated assets, and direct links into Run Detail, Outputs, and Agent Trace.
+- Run History -> Run Detail remains the deep inspection surface for Overview, Outputs Review, and Agent Trace.
+
 ## Capability Status
 
 | Area | Status | Notes |
@@ -79,6 +91,9 @@ flowchart TD
 | Agent API | Working | Agent Card, task create/list/detail/cancel, messages, artifacts, events, SSE stream. |
 | Google ADK runtime | Working | ADK-backed phase-agent wrapper around deterministic parser orchestration. |
 | App console | Working | Next.js operations UI for New Run, Run History, output asset review, assets, registries, review, and observability. |
+| Natural-language run instruction | Working | Optional user instruction is captured in New Run, interpreted by the backend, and included in planning/run creation payloads. |
+| Agentic Configure plan | Working | Recommendation banner, interpreted instruction summary, objective cards, parser strategy, output presets, output customization drawer, smart config, and advanced options. |
+| Advanced run controls | Working MVP | Parser/skill/fallback/quality/review/output/chunk/vector/sensitivity settings are captured and used or persisted in plan policy. Performance fields are persisted for worker/runtime expansion. |
 | Local parsers | Working | HTML, DOCX, native PDF text, OCR paths, optional LM Studio VLM. |
 | Skills | Working MVP | Folder-backed skill packs with schemas and validation rules. |
 | MCP-style tools | Working MVP | Local callable registry, gateway metadata, and per-task governance allow/block trace; not a full MCP SDK transport yet. |
@@ -108,6 +123,9 @@ The result is a parser agent that is explainable enough for enterprise workflows
 - Select parsers through a registry-backed planner.
 - Run fallback, quality scoring, review routing, asset publishing, audit, and observability.
 - Create Google ADK-backed parser-agent tasks from uploads, file IDs, multiple file IDs, inline text, existing asset IDs, and URL placeholders.
+- Add optional natural-language instructions on New Run so the agent can infer objectives, outputs, parser strategy, skills, fallback posture, and review rules.
+- Review an agent-recommended Configure plan with compact objective selection, parser strategy, output preset, selected asset summary, smart configuration, and advanced controls.
+- Customize output assets in a drawer grouped by Core, Search & AI, Knowledge, Governance, and Custom asset families.
 - Poll task status or stream persisted task events over SSE.
 - Inspect agent messages, artifacts, plans, steps, decisions, parser tool calls, skill invocation records, quality judgement, subtasks, and lineage.
 - Inspect per-task tool governance policy, allowed/blocked gateway tools, and planner-selectable skill metadata.
@@ -247,6 +265,8 @@ The agent can publish a single governed `ParsedAsset` record that contains many 
 
 Objective presets add more assets when needed. For example, Search adds chunks, vectors, and evidence; Structured extraction adds entities and user-defined fields; Graph adds relationships and a knowledge graph.
 
+Output selection is handled in the Configure step through an output preset plus a Customize Outputs drawer. The UI stays compact while still letting a developer or operator request concrete asset families for the run.
+
 | New Run objective | Added assets | Typical consumer |
 | --- | --- | --- |
 | General | Minimal baseline only | Human inspection and simple extraction. |
@@ -278,13 +298,31 @@ Objective presets add more assets when needed. For example, Search adds chunks, 
 
 The Outputs tab in Run Detail is organized as an Outputs Review workspace: metrics at the top, a main selected asset viewer, a generated-assets rail, and quick preview shortcuts for text, entities, and tables.
 
+## Configure And Planning Controls
+
+The Configure screen produces a plan-shaped payload instead of only a parser choice. These controls are passed into backend planning/run creation where supported, and preserved in plan policy where deeper runtime execution is still evolving.
+
+| Control group | Examples | Current backend behavior |
+| --- | --- | --- |
+| Instruction and objective | `agent_instruction`, `selected_objective` | Interpreted into objective/output/skill recommendations and included in task input payload. |
+| Parser strategy | Preferred parser override, fallback parser, skill override | Active in parser selection and orchestration where parser/skill metadata supports it. |
+| Output contract | Preset, selected asset types, custom fields | Drives generated asset payloads and Run Detail Outputs. |
+| Smart configuration | Quality target, cost profile, latency profile, human review policy | Quality/review choices are active; cost/latency posture is captured for planning and future schedulers. |
+| Advanced extraction | OCR/table detection, image understanding, chunk size, overlap, vectors | Output and chunk/vector options are active; image/OCR options are captured and honored where parser adapters expose support. |
+| Governance | Sensitivity handling, PHI policy, audit sensitive detections | Captured in plan policy and ready for stricter policy packs. |
+| Processing | Priority, max processing time, parallelism, retries | Persisted for worker/runtime expansion; local worker currently remains conservative. |
+
 ## Screenshots
 
-The UI is intentionally compact and operations-focused. The screenshots below are the current wireframe-aligned app screens in this repo.
+The UI is intentionally compact and operations-focused. The screenshots below are the current wireframe-aligned app screens and latest New Run configuration references in this repo.
 
 | Home | New Run |
 | --- | --- |
 | ![Home screen](application%20wireframes/Home%20Screen.png)<br>Operational entry point for recent activity, parser health, review pressure, and starting parsing work. | ![New Run screen](application%20wireframes/Parse%20Screen1.png)<br>Upload, configure output assets, and create agent-backed parsing runs. |
+
+| New Run Configure | Advanced Options |
+| --- | --- |
+| ![New Run Configure](docs/screenshots/new-run-configure.png)<br>Agent recommendations, interpreted instruction, objective cards, parser strategy, output preset summary, smart config, and sticky configuration rail. | ![New Run Advanced Options](docs/screenshots/new-run-advanced-options.png)<br>Collapsed-by-default advanced controls for parser overrides, fallback, OCR/image handling, chunking, embeddings, governance, review, and processing. |
 
 | Run History | Review Queue |
 | --- | --- |
@@ -780,6 +818,8 @@ Use this table to understand what is production-like today and what is intention
 | Agent Card and task API | Working | Add auth, tenancy, quotas, and stronger schema/version compatibility. |
 | Task execution | DB-backed queue with worker claims, retries, heartbeat locks, and stale-lock recovery | Dedicated production queue backend, dead-letter handling, concurrency controls, and operational dashboards. |
 | Event streaming | Persisted events plus SSE polling stream | Dedicated event bus or websocket/SSE broker for multi-instance deployments. |
+| Natural-language planning | Working instruction interpreter and UI state propagation | Model-backed planner refinement, evaluation sets, and richer prompt/schema grounding. |
+| Configure plan controls | Working MVP for objective, parser override, fallback, outputs, quality, review, chunk/vector, and sensitivity policy | Deeper scheduler/runtime enforcement for cost, latency, parallelism, timeout, and retry policies. |
 | File upload and local storage | Working local filesystem storage | Object storage, retention policies, antivirus/malware scanning, encryption. |
 | SQLite dev database | Working for local use | PostgreSQL plus Alembic migrations and operational backups. |
 | HTML, DOCX, native PDF parsing | Working local parsers | Broader fixtures, benchmarks, and parser-specific quality calibration. |
