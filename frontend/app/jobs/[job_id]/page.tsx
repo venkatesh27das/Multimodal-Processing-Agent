@@ -7,12 +7,15 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
-  Copy,
+  Download,
   FolderOpen,
   GitBranch,
+  MoreVertical,
   RefreshCw,
   Send,
   Star,
+  Table2,
+  Users,
 } from "lucide-react";
 import {
   agentApi,
@@ -44,14 +47,12 @@ type DetailState = {
   profile: FileProfile | null;
 };
 
-type JobDetailTab = "overview" | "outputs" | "agent_trace" | "lineage" | "audit";
+type JobDetailTab = "overview" | "outputs" | "agent_trace";
 
 const jobDetailTabs: Array<{ id: JobDetailTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "outputs", label: "Outputs" },
   { id: "agent_trace", label: "Agent Trace" },
-  { id: "lineage", label: "Lineage" },
-  { id: "audit", label: "Audit" },
 ];
 
 export default function JobDetailPage({ params }: { params: { job_id: string } }) {
@@ -107,12 +108,14 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   const entities = firstAsset?.entities ?? [];
   const tables = firstAsset?.tables ?? [];
   const generatedAssets = firstAsset ? generatedAssetItems(firstAsset) : [];
-  const selectedOutputKind = selectedOutputAsset ?? generatedAssets[0]?.kind ?? null;
+  const preferredOutputKind = generatedAssets.some((asset) => asset.kind === "tables")
+    ? "tables"
+    : generatedAssets[0]?.kind ?? null;
+  const selectedOutputKind = selectedOutputAsset ?? preferredOutputKind;
+  const selectedAssetItem = generatedAssets.find((asset) => asset.kind === selectedOutputKind) ?? null;
   const showOutputAsset = (kind: string) => {
     setSelectedOutputAsset(kind);
-    window.requestAnimationFrame(() => {
-      document.getElementById("asset-viewer")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setActiveTab("outputs");
   };
 
   if (!detail) {
@@ -153,92 +156,94 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
       <JobDetailTabs activeTab={activeTab} onChange={setActiveTab} />
 
       {activeTab === "overview" ? (
-        <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)_360px]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
-            <Card className="p-4">
-              <SectionTitle title="File Metadata" action={<ActionButton icon={Copy} variant="secondary">Edit</ActionButton>} />
-              <dl className="mt-3 space-y-3 text-sm">
-                <DetailRow label="File Name" value={fileName} />
-                <DetailRow label="File Type" value={detail.file?.mime_type ?? "application/pdf"} />
-                <DetailRow label="File Size" value={formatBytes(detail.file?.size_bytes ?? 0)} />
-                <DetailRow label="Pages" value={pages} />
-                <DetailRow label="Language" value={language} />
-                <DetailRow label="Uploaded By" value={detail.file?.created_by ?? "--"} />
-                <DetailRow label="Source" value={detail.file?.source ?? "Upload"} />
-                <DetailRow label="Checksum" value={detail.file?.checksum_sha256 ? shortId(detail.file.checksum_sha256) : "--"} />
-              </dl>
+            <Card className="border-warning/50 bg-warning-soft/40 p-4">
+              <div className="grid gap-4 lg:grid-cols-[56px_minmax(0,1fr)]">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-accent text-white">
+                  <AlertTriangle className="h-6 w-6" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-ink">Review Recommended</h3>
+                  <p className="mt-1 text-sm text-ink">
+                    The run completed, but human review is recommended because the quality score is {qualityScore}, below the configured threshold.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <ActionButton icon={FolderOpen} variant="secondary" onClick={() => setActiveTab("outputs")}>Open Outputs</ActionButton>
+                    <ActionButton icon={Users} variant="secondary">Send to Review</ActionButton>
+                    <ActionButton icon={GitBranch} variant="secondary" onClick={() => setActiveTab("agent_trace")}>Open Agent Trace</ActionButton>
+                    <ActionButton icon={RefreshCw} variant="secondary">Retry Run</ActionButton>
+                  </div>
+                </div>
+                <div className="grid gap-3 border-t border-warning/30 pt-3 text-sm sm:grid-cols-3 lg:col-span-2">
+                  <MiniRunFact label="Primary Parser" value={parser} />
+                  <MiniRunFact label="Fallback Parser" value={fallback ?? "--"} />
+                  <MiniRunFact label="Skill Used" value={skill ?? "--"} />
+                </div>
+              </div>
             </Card>
 
             <Card className="p-4">
-              <SectionTitle title="Detected Document Profile" action={<Tag tone="success">{profileTag}</Tag>} />
-              <dl className="mt-3 space-y-3 text-sm">
-                <DetailRow label="Modalities" value={detail.profile?.modalities?.join(", ") || "--"} />
-                <DetailRow label="Layout" value={formatLabel(detail.profile?.layout_complexity ?? "--")} />
-                <DetailRow label="Tables" value={formatLikelihood(detail.profile?.table_likelihood)} />
-                <DetailRow label="Images" value={formatLikelihood(detail.profile?.image_likelihood)} />
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted">Text Layer</dt>
-                  <dd className="flex items-center gap-3 font-semibold text-ink">
-                    {detail.profile?.has_text_layer === null || detail.profile?.has_text_layer === undefined
-                      ? "--"
-                      : detail.profile.has_text_layer ? "Detected" : "Not detected"}
-                  </dd>
-                </div>
-              </dl>
+              <SectionTitle
+                title="Execution Journey"
+                action={<button className="flex items-center gap-1 text-xs font-bold text-info" type="button" onClick={() => setActiveTab("agent_trace")}>View full agent trace <ArrowRight className="h-3 w-3" /></button>}
+              />
+              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {overviewJourneySteps({ completedAt, detail, fallback, parser, uploadedAt }).map((step) => (
+                  <JourneyStep key={step.title} {...step} />
+                ))}
+              </div>
             </Card>
+
+            <Card className="p-4">
+              <SectionTitle
+                title="Generated Assets"
+                action={<button className="flex items-center gap-1 text-xs font-bold text-info" type="button" onClick={() => setActiveTab("outputs")}>Open outputs <ArrowRight className="h-3 w-3" /></button>}
+              />
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                {generatedAssets.slice(0, 10).map((asset) => (
+                  <GeneratedAssetSummaryCard key={asset.kind} asset={asset} onClick={() => showOutputAsset(asset.kind)} />
+                ))}
+                {!generatedAssets.length ? <p className="text-sm text-muted">No published assets yet.</p> : null}
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <SectionTitle
+                title="Key Extraction Preview"
+                action={<button className="flex items-center gap-1 text-xs font-bold text-info" type="button" onClick={() => showOutputAsset("tables")}>View full table <ArrowRight className="h-3 w-3" /></button>}
+              />
+              <div className="mt-3 overflow-hidden rounded-md border border-border">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface text-xs text-muted">
+                    <tr>{tableHeaders(tables[0]).map((header) => <th key={header} className="p-2">{header}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {tableRows(tables[0]).slice(0, 4).map((row, rowIndex) => (
+                      <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="p-2 font-semibold text-ink">{cell}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
           </div>
 
-          <Card className="p-4">
-            <SectionTitle
-              title="Parsing Plan & Execution"
-              action={<button className="text-xs font-bold text-info" type="button" onClick={() => setActiveTab("agent_trace")}>Open trace</button>}
-            />
-            <div className="mt-3 grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-              <div className="overflow-hidden rounded-md border border-border">
-                {[
-                  ["Primary Parser (Selected)", parser, "Selected"],
-                  ["Fallback Parser", fallback ?? "No fallback", ""],
-                  ["Skill Used", skill ?? "No skill selected", ""],
-                ].map(([label, value, badge]) => (
-                  <div key={label} className="border-b border-border p-4 last:border-b-0">
-                    <p className="text-xs font-bold text-muted">{label}</p>
-                    <p className="mt-1 font-bold text-ink">{value}</p>
-                    {badge ? <Tag tone="success">{badge}</Tag> : null}
-                  </div>
-                ))}
-                <div className="p-4 text-sm">
-                  <p className="font-bold text-ink">Reasoning Summary</p>
-                  <p className="mt-2 text-muted">
-                    {detail.plan?.decision_reason ?? detail.profile?.recommended_parsing_strategy ?? "No planner rationale was recorded for this job."}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  ["Intake", "File received", uploadedAt, "success"],
-                  ["Profiling", detail.profile ? "Document profile recorded" : "Profile pending", uploadedAt, detail.profile ? "success" : "warning"],
-                  ["Parsing", `${parser} executed`, completedAt, "success"],
-                  ["Validation", detail.quality?.quality_explanation ?? "Quality report pending", completedAt, detail.quality ? "success" : "warning"],
-                  ["Fallback Check", fallback ? `${fallback} available` : "No fallback required", completedAt, fallback ? "warning" : "success"],
-                  ["Publish", firstAsset ? "Outputs published" : "No asset published yet", firstAsset ? formatDateTime(firstAsset.created_at) : completedAt, firstAsset ? "success" : "warning"],
-                ].map(([title, text, time, tone]) => (
-                  <div key={title} className="grid grid-cols-[20px_1fr_auto] gap-3 text-sm">
-                    {tone === "warning" ? <AlertTriangle className="h-4 w-4 text-warning" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
-                    <div>
-                      <p className="font-bold text-ink">{title}</p>
-                      <p className="text-xs text-muted">{text}</p>
-                    </div>
-                    <span className="text-xs text-muted">{time}</span>
-                  </div>
-                ))}
-                <ActionButton variant="secondary" onClick={() => setActiveTab("agent_trace")}>View Full Execution Log</ActionButton>
-              </div>
-            </div>
-          </Card>
-
           <div className="space-y-3">
             <Card className="p-4">
-              <SectionTitle title="Quality Report" action={<span className="text-xs font-bold text-info">How is this score calculated?</span>} />
+              <SectionTitle title="Review Decision" action={<Tag tone="warning">Needs review</Tag>} />
+              <dl className="mt-4 space-y-3 text-sm">
+                <DetailRow label="Decision" value={reviewDecision} valueClassName={reviewTone} />
+                <DetailRow label="Reason" value={detail.quality?.quality_explanation ?? "Quality below threshold"} />
+                <DetailRow label="Confidence" value={qualityScore} />
+                <DetailRow label="Threshold" value={`${Math.round((detail.plan?.quality_threshold ?? 0.8) * 100)}%`} />
+                <DetailRow label="Recommended Action" value="Human validation" />
+              </dl>
+              <ActionButton className="mt-4 w-full justify-center" icon={Send} variant="secondary">Send to Review</ActionButton>
+            </Card>
+
+            <Card className="p-4">
+              <SectionTitle title="Quality Breakdown" />
               <div className="mt-4 space-y-4">
                 <QualityBar label="Completeness" value={scoreToPercent(detail.quality?.completeness_score)} />
                 <QualityBar label="Consistency" value={scoreToPercent(detail.quality?.consistency_score)} />
@@ -248,37 +253,34 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                     <span className="text-sm text-muted">Overall Quality Score</span>
                     <span className="flex items-center gap-2 text-xl font-bold text-success"><Star className="h-5 w-5" /> {qualityScore}</span>
                   </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-sm text-muted">Review Decision</span>
-                    <span className={`font-bold ${reviewTone}`}>{reviewDecision}</span>
-                  </div>
                 </div>
               </div>
             </Card>
 
             <Card className="p-4">
-              <SectionTitle
-                title="Assets Summary"
-                action={<button className="text-xs font-bold text-info" type="button" onClick={() => setActiveTab("outputs")}>Open outputs</button>}
-              />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {generatedAssets.slice(0, 4).map((asset) => (
-                  <div key={asset.kind} className="rounded-md border border-border p-2">
-                    <p className="truncate text-xs font-bold text-ink">{asset.label}</p>
-                    <p className="mt-1 text-lg font-bold text-ink">{asset.count}</p>
-                  </div>
-                ))}
-                {!generatedAssets.length ? <p className="col-span-2 text-sm text-muted">No published assets yet.</p> : null}
-              </div>
+              <SectionTitle title="Document Profile" action={<Tag tone="success">{profileTag}</Tag>} />
+              <dl className="mt-3 space-y-3 text-sm">
+                <DetailRow label="File Type" value={detail.file?.mime_type ?? "--"} />
+                <DetailRow label="File Size" value={formatBytes(detail.file?.size_bytes ?? 0)} />
+                <DetailRow label="Modality" value={detail.profile?.modalities?.join(", ") || "--"} />
+                <DetailRow label="Layout Risk" value={formatLabel(detail.profile?.layout_complexity ?? "--")} />
+                <DetailRow label="Image Likelihood" value={formatLikelihood(detail.profile?.image_likelihood)} />
+                <DetailRow label="Table Likelihood" value={formatLikelihood(detail.profile?.table_likelihood)} />
+                <DetailRow label="Uploaded By" value={detail.file?.created_by ?? "--"} />
+                <DetailRow label="Source" value={detail.file?.source ?? "Upload"} />
+              </dl>
             </Card>
 
             <Card className="p-4">
-              <SectionTitle title="Quick Actions" />
-              <div className="mt-3 space-y-2">
-                <QuickAction icon={FolderOpen} title="Open Assets" detail="View extracted outputs" href="/assets" />
-                <QuickAction icon={RefreshCw} title="Retry Run" detail="Re-run parsing for this file" href="/jobs" />
-                <QuickAction icon={Send} title="Send to Review" detail="Add to review queue" href="/review-queue" />
-              </div>
+              <SectionTitle title="Run Metadata" action={<MoreVertical className="h-4 w-4 text-muted" />} />
+              <dl className="mt-3 space-y-3 text-sm">
+                <DetailRow label="Run ID" value={detail.job.id} />
+                <DetailRow label="Created" value={formatDateTime(detail.job.created_at)} />
+                <DetailRow label="Updated" value={completedAt} />
+                <DetailRow label="Workspace" value="Enterprise Workspace" />
+                <DetailRow label="Policy" value="Default Parsing Policy" />
+                <DetailRow label="Checksum" value={detail.file?.checksum_sha256 ? shortId(detail.file.checksum_sha256) : "--"} />
+              </dl>
             </Card>
           </div>
         </div>
@@ -287,99 +289,62 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
       {activeTab === "outputs" ? (
         <div className="space-y-3">
           <Card className="p-4">
-            <SectionTitle
-              title="Outputs Review"
-              action={<span className="text-xs font-bold text-muted">{generatedAssets.length} asset types</span>}
-            />
-            <p className="mt-1 text-sm text-muted">
-              Inspect published assets, rendered previews, and machine-readable payloads from this run.
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <LineageNode label="Parsed Content" value={parsedText ? String(parsedText.length) : "0"} detail="Characters extracted" />
-              <LineageNode label="Chunks" value={String(firstAsset?.chunks.length ?? 0)} detail="Retrieval units" />
-              <LineageNode label="Entities" value={String(entities.length)} detail="Detected records" />
-              <LineageNode label="Tables" value={String(tables.length)} detail="Structured tables" />
+            <SectionTitle title="Generated Assets" action={<span className="text-xs font-bold text-muted">{generatedAssets.length} asset types</span>} />
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
+              {generatedAssets.map((asset) => (
+                <OutputAssetTile
+                  key={asset.kind}
+                  active={asset.kind === selectedOutputKind}
+                  asset={asset}
+                  onSelect={() => setSelectedOutputAsset(asset.kind)}
+                />
+              ))}
+              {!generatedAssets.length ? <p className="text-sm text-muted">No published assets yet.</p> : null}
             </div>
           </Card>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-            <div className="space-y-3">
-              <div id="asset-viewer">
-                <Card className="p-4">
-                  <SectionTitle
-                    title={selectedOutputKind ? formatAssetKind(selectedOutputKind) : "Asset Viewer"}
-                    action={<span className="text-xs font-bold text-muted">{selectedOutputKind ? "Selected asset" : "No asset selected"}</span>}
-                  />
-                  <div className="mt-3">
-                    {firstAsset && selectedOutputKind ? (
-                      <AssetViewer asset={firstAsset} kind={selectedOutputKind} />
-                    ) : (
-                      <div className="rounded-md border border-border p-3 text-sm text-muted">
-                        No generated asset is available to inspect yet.
-                      </div>
-                    )}
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <Card className="p-4">
+              <SectionTitle
+                title={selectedOutputKind ? formatAssetKind(selectedOutputKind) : "Asset Viewer"}
+                action={<span className={`rounded-full px-2 py-1 text-xs font-bold ${selectedAssetItem?.ready ? "bg-success-soft text-success" : "bg-slate-100 text-muted"}`}>{selectedAssetItem?.status ?? "Empty"}</span>}
+              />
+              <p className="mt-1 text-sm text-muted">
+                {selectedOutputKind ? assetViewerDescription(selectedOutputKind, fileName) : "Select a generated asset to inspect its output."}
+              </p>
+              <div className="mt-4">
+                {firstAsset && selectedOutputKind ? (
+                  <AssetViewer asset={firstAsset} kind={selectedOutputKind} />
+                ) : (
+                  <div className="rounded-md border border-border p-3 text-sm text-muted">
+                    No generated asset is available to inspect yet.
                   </div>
-                </Card>
+                )}
               </div>
-
-              <Card className="p-4">
-                <SectionTitle title="Output Previews" />
-                <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  <PreviewPanel
-                    title="Extracted Text"
-                    action="View full text"
-                    onAction={() => showOutputAsset("parsed_content")}
-                  >
-                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs text-ink">
-                      {parsedText ?? "No text preview is available for this asset yet."}
-                    </pre>
-                  </PreviewPanel>
-                  <PreviewPanel
-                    title={`Entities (${entities.length})`}
-                    action="View all"
-                    onAction={() => showOutputAsset("entities")}
-                  >
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {(entities.length ? entities.slice(0, 10).map(entityLabel) : ["No entities extracted"]).map((item, index) => (
-                        <span key={item} className={`rounded-md px-2 py-1 font-semibold ${index % 3 === 0 ? "bg-purple-soft text-purple" : index % 3 === 1 ? "bg-success-soft text-success" : "bg-info-soft text-info"}`}>{item}</span>
-                      ))}
-                    </div>
-                  </PreviewPanel>
-                  <PreviewPanel
-                    title={`Tables (${tables.length})`}
-                    action="View all"
-                    onAction={() => showOutputAsset("tables")}
-                  >
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-surface text-muted">
-                        <tr>{tableHeaders(tables[0]).map((header) => <th key={header} className="p-2">{header}</th>)}</tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {tableRows(tables[0]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="p-2">{cell}</td>)}</tr>)}
-                      </tbody>
-                    </table>
-                  </PreviewPanel>
-                </div>
-              </Card>
-            </div>
+            </Card>
 
             <Card className="p-4">
-              <SectionTitle title="Generated Assets" />
-              <div className="mt-3 space-y-2">
-                {generatedAssets.map((asset) => (
-                  <OutputAssetListItem
-                    key={asset.kind}
-                    active={asset.kind === selectedOutputKind}
-                    asset={asset}
-                    onSelect={() => showOutputAsset(asset.kind)}
+              <SectionTitle title="Asset Details" action={<Tag tone={selectedAssetItem?.ready ? "success" : "neutral"}>{selectedAssetItem?.status ?? "Empty"}</Tag>} />
+              <dl className="mt-4 space-y-3 text-sm">
+                {assetDetailRows({ asset: firstAsset, item: selectedAssetItem, kind: selectedOutputKind, parser, qualityScore }).map(([label, value, tone]) => (
+                  <DetailRow
+                    key={label}
+                    label={label}
+                    value={value}
+                    valueClassName={tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-ink"}
                   />
                 ))}
-                {!generatedAssets.length ? (
-                  <div className="rounded-md border border-border p-3 text-sm text-muted">
-                    No generated assets have been published for this run yet.
-                  </div>
-                ) : null}
+              </dl>
+              <div className="mt-4 grid gap-2">
+                <ActionButton className="justify-center" icon={Download} variant="secondary">Export CSV</ActionButton>
+                <ActionButton className="justify-center" icon={FolderOpen} variant="secondary">Open in Assets</ActionButton>
+                <ActionButton className="justify-center" icon={Send} variant="primary">Send to Review</ActionButton>
               </div>
+              {detail.quality?.human_review_required ? (
+                <div className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-xs text-warning">
+                  Review recommended because quality score is below the configured threshold.
+                </div>
+              ) : null}
             </Card>
           </div>
         </div>
@@ -389,68 +354,8 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
         agentTask ? (
           <AgentTracePanel task={agentTask} />
         ) : (
-          <Card className="p-4 text-sm text-muted">
-            No agent task trace is linked to this job yet.
-          </Card>
+          <Card className="p-4 text-sm text-muted">No agent task trace is linked to this job yet.</Card>
         )
-      ) : null}
-
-      {activeTab === "lineage" ? (
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Card className="p-4">
-            <SectionTitle title="Lineage Map" />
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <LineageNode label="Source File" value={fileName} detail={shortId(detail.job.file_id)} />
-              <LineageNode label="Agent Task" value={agentTask?.id ? shortId(agentTask.id) : "--"} detail={agentTask?.status ? formatLabel(agentTask.status) : "No linked task"} />
-              <LineageNode label="Parser" value={parser} detail={fallback ? `Fallback ${fallback}` : "Primary execution"} />
-              <LineageNode label="Published Asset" value={firstAsset ? shortId(firstAsset.id) : "--"} detail={firstAsset ? formatLabel(firstAsset.asset_type) : "Not published"} />
-            </div>
-          </Card>
-          <Card className="p-4">
-            <SectionTitle title="Provenance Details" />
-            <dl className="mt-3 space-y-3 text-sm">
-              <DetailRow label="Job ID" value={detail.job.id} />
-              <DetailRow label="Plan ID" value={lineageText(firstAsset?.lineage, "plan_id")} />
-              <DetailRow label="Execution Result" value={lineageText(firstAsset?.lineage, "execution_result_id")} />
-              <DetailRow label="Storage Path" value={lineageText(firstAsset?.lineage, "storage_path")} />
-              <DetailRow label="Skill" value={skill ?? "--"} />
-              <DetailRow label="Quality" value={qualityScore} />
-            </dl>
-          </Card>
-        </div>
-      ) : null}
-
-      {activeTab === "audit" ? (
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Card className="p-4">
-            <SectionTitle title="Audit Events" />
-            <div className="mt-3 divide-y divide-border rounded-md border border-border">
-              {auditEvents(firstAsset).map((event, index) => (
-                <div key={`${auditText(event, "entity_id")}-${index}`} className="grid gap-2 p-3 text-sm md:grid-cols-[1fr_180px_150px]">
-                  <div>
-                    <p className="font-bold text-ink">{formatLabel(auditText(event, "action"))}</p>
-                    <p className="text-xs text-muted">{formatLabel(auditText(event, "entity_type"))} · {shortId(auditText(event, "entity_id"))}</p>
-                  </div>
-                  <span className="text-muted">{formatDateTime(auditText(event, "created_at"))}</span>
-                  <span className="font-semibold text-ink">{auditText(event, "actor")}</span>
-                </div>
-              ))}
-              {!auditEvents(firstAsset).length ? (
-                <div className="p-3 text-sm text-muted">No audit events were recorded for this asset yet.</div>
-              ) : null}
-            </div>
-          </Card>
-          <Card className="p-4">
-            <SectionTitle title="Governance Decision" />
-            <dl className="mt-3 space-y-3 text-sm">
-              <DetailRow label="Review" value={reviewDecision} />
-              <DetailRow label="Quality Status" value={detail.quality?.quality_status ? formatLabel(detail.quality.quality_status) : "--"} />
-              <DetailRow label="Review Reason" value={detail.quality?.quality_explanation ?? "--"} />
-              <DetailRow label="Human Policy" value={compactJson(detail.plan?.human_review_policy)} />
-              <DetailRow label="Output Contract" value={compactJson(detail.plan?.output_contract)} />
-            </dl>
-          </Card>
-        </div>
       ) : null}
     </div>
   );
@@ -494,12 +399,29 @@ function HeroMetric({ detail, icon: Icon, label, tone, value }: { detail: string
   );
 }
 
+function MiniRunFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-bold text-muted">{label}</p>
+      <p className="mt-1 truncate font-bold text-ink">{value}</p>
+    </div>
+  );
+}
+
 function SectionTitle({ action, title }: { action?: React.ReactNode; title: string }) {
   return <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-ink">{title}</h3>{action}</div>;
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return <div className="flex justify-between gap-4"><dt className="text-muted">{label}</dt><dd className="truncate font-semibold text-ink">{value}</dd></div>;
+function DetailRow({
+  label,
+  value,
+  valueClassName = "text-ink",
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return <div className="flex justify-between gap-4"><dt className="text-muted">{label}</dt><dd className={`truncate font-semibold ${valueClassName}`}>{value}</dd></div>;
 }
 
 function QualityBar({ label, value }: { label: string; value: number }) {
@@ -512,16 +434,71 @@ function QualityBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function QuickAction({ detail, href, icon: Icon, title }: { detail: string; href: string; icon: typeof FolderOpen; title: string }) {
+type JourneyStepProps = {
+  detail: string;
+  duration: string;
+  status: "success" | "warning" | "running";
+  time: string;
+  title: string;
+};
+
+function JourneyStep({ detail, duration, status, time, title }: JourneyStepProps) {
+  const icon =
+    status === "warning"
+      ? <AlertTriangle className="h-4 w-4 text-warning" />
+      : status === "running"
+        ? <RefreshCw className="h-4 w-4 text-accent" />
+        : <CheckCircle2 className="h-4 w-4 text-success" />;
   return (
-    <Link href={href} className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:bg-surface">
-      <span className="flex items-center gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-md bg-info-soft text-info"><Icon className="h-4 w-4" /></span>
-        <span><span className="block font-bold text-ink">{title}</span><span className="text-xs text-muted">{detail}</span></span>
-      </span>
-      <ArrowRight className="h-4 w-4 text-muted" />
-    </Link>
+    <div className="min-h-[110px] rounded-md border border-border p-3">
+      <div className="flex items-center gap-2">
+        <span className={`grid h-7 w-7 place-items-center rounded-full ${status === "warning" ? "bg-warning-soft" : status === "running" ? "bg-accent-soft" : "bg-success-soft"}`}>{icon}</span>
+        <p className="font-bold text-ink">{title}</p>
+      </div>
+      <p className="mt-3 line-clamp-3 text-xs text-muted">{detail}</p>
+      <div className="mt-3 flex justify-between gap-2 text-xs text-muted">
+        <span>{time}</span>
+        <span className="font-semibold">{duration}</span>
+      </div>
+    </div>
   );
+}
+
+function GeneratedAssetSummaryCard({ asset, onClick }: { asset: GeneratedAssetItem; onClick: () => void }) {
+  return (
+    <button className="flex items-center gap-3 rounded-md border border-border p-3 text-left hover:bg-surface" type="button" onClick={onClick}>
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-success-soft text-success">
+        <AssetIcon kind={asset.kind} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-bold text-ink">{asset.label}</span>
+        <span className="text-xs font-semibold text-muted">{assetCountLabel(asset)}</span>
+      </span>
+    </button>
+  );
+}
+
+function overviewJourneySteps({
+  completedAt,
+  detail,
+  fallback,
+  parser,
+  uploadedAt,
+}: {
+  completedAt: string;
+  detail: DetailState;
+  fallback: string | null;
+  parser: string;
+  uploadedAt: string;
+}): JourneyStepProps[] {
+  return [
+    { title: "Intake", detail: "File received", time: uploadedAt, duration: "2s", status: "success" },
+    { title: "Profiling", detail: "Document profile created", time: uploadedAt, duration: "4s", status: detail.profile ? "success" : "warning" },
+    { title: "Parsing", detail: `${parser} executed`, time: completedAt, duration: "41s", status: "success" },
+    { title: "Validation", detail: detail.quality?.quality_explanation ?? "Quality report pending", time: completedAt, duration: "8s", status: detail.quality?.human_review_required ? "warning" : "success" },
+    { title: "Fallback", detail: fallback ? `${fallback} used` : "No fallback required", time: completedAt, duration: fallback ? "28s" : "--", status: fallback ? "running" : "success" },
+    { title: "Publish", detail: "Assets published and review request created", time: completedAt, duration: "6s", status: "success" },
+  ];
 }
 
 type GeneratedAssetItem = {
@@ -532,7 +509,7 @@ type GeneratedAssetItem = {
   ready: boolean;
 };
 
-function OutputAssetListItem({
+function OutputAssetTile({
   active = false,
   asset,
   onSelect,
@@ -543,57 +520,32 @@ function OutputAssetListItem({
 }) {
   return (
     <button
-      className={`w-full rounded-md border p-3 text-left transition hover:bg-surface ${active ? "border-accent bg-accent-soft/40" : "border-border"}`}
+      className={`min-h-[92px] w-[142px] shrink-0 rounded-md border p-3 text-left transition hover:bg-surface ${active ? "border-accent bg-accent-soft/40" : "border-border"}`}
       type="button"
       onClick={onSelect}
     >
-      <span className="flex items-start justify-between gap-3">
-        <span className="min-w-0">
-          <span className="block text-sm font-bold text-ink">{asset.label}</span>
-          <span className="mt-1 block text-xs text-muted">{assetStatusDetail(asset)}</span>
+      <span className="flex items-start gap-2">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-info-soft text-info">
+          <AssetIcon kind={asset.kind} />
         </span>
-        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${asset.ready ? "bg-success-soft text-success" : "bg-slate-100 text-muted"}`}>
-          {asset.status}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-bold text-ink">{asset.label}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-muted">{assetCountLabel(asset)}</span>
         </span>
       </span>
-      <span className="mt-3 flex items-center justify-between">
-        <span className="text-2xl font-bold text-ink">{asset.count}</span>
-        <ArrowRight className="h-4 w-4 text-muted" />
+      <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${asset.ready ? "bg-success-soft text-success" : "bg-slate-100 text-muted"}`}>
+        {asset.status}
       </span>
     </button>
   );
 }
 
-function PreviewPanel({
-  action,
-  children,
-  onAction,
-  title,
-}: {
-  action: string;
-  children: React.ReactNode;
-  onAction?: () => void;
-  title: string;
-}) {
-  return (
-    <div className="rounded-md border border-border p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-sm font-bold text-ink">{title}</p>
-        {onAction ? (
-          <button
-            className="shrink-0 text-xs font-bold text-info hover:text-accent"
-            type="button"
-            onClick={onAction}
-          >
-            {action}
-          </button>
-        ) : (
-          <span className="shrink-0 text-xs font-bold text-info">{action}</span>
-        )}
-      </div>
-      {children}
-    </div>
-  );
+function AssetIcon({ kind }: { kind: string }) {
+  const classes = "h-4 w-4";
+  if (kind === "tables") return <Table2 className={classes} aria-hidden="true" />;
+  if (kind === "quality_report") return <Star className={classes} aria-hidden="true" />;
+  if (kind === "lineage" || kind === "relationships" || kind === "knowledge_graph") return <GitBranch className={classes} aria-hidden="true" />;
+  return <FileTypeIcon type="document" />;
 }
 
 function AssetViewer({ asset, kind }: { asset: ParsedAsset; kind: string }) {
@@ -857,23 +809,6 @@ function LineageNode({ detail, label, value }: { detail: string; label: string; 
   );
 }
 
-function lineageText(lineage: Record<string, unknown> | undefined, key: string) {
-  return compactValue(lineage?.[key]);
-}
-
-function auditEvents(asset: ParsedAsset | null) {
-  return asset?.audit_trail ?? [];
-}
-
-function auditText(event: Record<string, unknown>, key: string) {
-  return compactValue(event[key]);
-}
-
-function compactJson(value: Record<string, unknown> | null | undefined) {
-  if (!value || !Object.keys(value).length) return "--";
-  return JSON.stringify(value);
-}
-
 function compactValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "--";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -953,12 +888,53 @@ function formatAssetKind(kind: string) {
     .join(" ");
 }
 
-function assetStatusDetail(asset: GeneratedAssetItem) {
-  if (asset.kind === "parsed_content") return asset.ready ? "Characters extracted" : "No text emitted";
-  if (asset.kind === "vectors") return "Embedding records";
-  if (asset.kind === "knowledge_graph") return "Graph edges";
-  if (asset.kind === "quality_report" || asset.kind === "lineage") return "Run governance asset";
-  return "Generated records";
+function assetCountLabel(asset: GeneratedAssetItem) {
+  if (asset.kind === "parsed_content") return `${asset.count} chars`;
+  if (asset.kind === "tables") return `${asset.count} ${asset.count === 1 ? "record" : "records"}`;
+  if (asset.kind === "quality_report" || asset.kind === "lineage" || asset.kind === "summary" || asset.kind === "classification") return `${asset.count} record`;
+  return `${asset.count} ${asset.count === 1 ? "record" : "records"}`;
+}
+
+function assetViewerDescription(kind: string, fileName: string) {
+  if (kind === "tables") return `Extracted table records from ${fileName}.`;
+  if (kind === "parsed_content") return `Extracted text content from ${fileName}.`;
+  if (kind === "entities") return `Extracted entity records from ${fileName}.`;
+  if (kind === "chunks") return `Chunked retrieval units from ${fileName}.`;
+  if (kind === "vectors") return `Embedding records generated from chunks in ${fileName}.`;
+  if (kind === "quality_report") return "Quality and review judgement for this run.";
+  if (kind === "lineage") return "Source, parser, skill, execution, and asset provenance.";
+  return `${formatAssetKind(kind)} generated from ${fileName}.`;
+}
+
+function assetDetailRows({
+  asset,
+  item,
+  kind,
+  parser,
+  qualityScore,
+}: {
+  asset: ParsedAsset | null;
+  item: GeneratedAssetItem | null;
+  kind: string | null;
+  parser: string;
+  qualityScore: string;
+}): Array<[string, string, "success" | "warning" | undefined]> {
+  const table = kind === "tables" ? asset?.tables[0] : null;
+  const rows = tableRows(table ?? undefined);
+  const hasRealTable = Boolean(asset?.tables.length);
+  const rowCount = hasRealTable ? rows.length : 0;
+  const columnCount = hasRealTable ? tableHeaders(table ?? undefined).length : 0;
+  return [
+    ["Type", kind ? formatAssetKind(kind) : "--", undefined],
+    ["Status", item?.status ?? "Empty", item?.ready ? "success" : undefined],
+    ["Records", item ? assetCountLabel(item) : "0 records", undefined],
+    ["Rows", kind === "tables" ? String(rowCount) : "--", undefined],
+    ["Columns", kind === "tables" ? String(columnCount) : "--", undefined],
+    ["Quality", qualityScore, qualityScore === "--" ? undefined : "warning"],
+    ["Parser", parser, undefined],
+    ["Evidence", `${asset?.evidence_spans.length ?? 0} spans`, undefined],
+    ["Generated", formatDateTime(asset?.created_at), undefined],
+  ];
 }
 
 function formatDurationLabel(value: number | null | undefined) {
