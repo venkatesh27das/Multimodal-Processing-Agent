@@ -1,6 +1,8 @@
 "use client";
 
 import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reviewApi, type ReviewItem } from "@/api/review";
 import {
@@ -14,6 +16,8 @@ import {
 } from "@/components/design-system";
 
 export default function ReviewQueuePage() {
+  const searchParams = useSearchParams();
+  const focusedJobId = searchParams.get("job_id");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,13 +27,13 @@ export default function ReviewQueuePage() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await reviewApi.listItems());
+      setItems(await reviewApi.listItems({ jobId: focusedJobId }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load review items.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [focusedJobId]);
 
   useEffect(() => {
     void loadItems();
@@ -60,12 +64,19 @@ export default function ReviewQueuePage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Review Queue"
-        description="Resolve uncertain parser outputs and persist human review decisions."
+        title={focusedJobId ? "Review Item" : "Review Queue"}
+        description={focusedJobId ? `Review outputs routed from run ${focusedJobId}.` : "Resolve uncertain parser outputs and persist human review decisions."}
         action={
-          <ActionButton type="button" icon={RefreshCw} variant="secondary" onClick={() => void loadItems()}>
-            Refresh
-          </ActionButton>
+          <div className="flex gap-2">
+            {focusedJobId ? (
+              <Link href="/review-queue">
+                <ActionButton type="button" variant="secondary">All Reviews</ActionButton>
+              </Link>
+            ) : null}
+            <ActionButton type="button" icon={RefreshCw} variant="secondary" onClick={() => void loadItems()}>
+              Refresh
+            </ActionButton>
+          </div>
         }
       />
 

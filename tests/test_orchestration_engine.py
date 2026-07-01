@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from backend.app.api.routes.jobs import get_db
 from backend.app.db.base import Base
 from backend.app.db.seed import seed_registry_data
-from backend.app.domain.enums import FileType, JobStatus, Modality, QualityStatus
+from backend.app.domain.enums import FileType, JobStatus, Modality, QualityStatus, ReviewStatus
 from backend.app.main import app
 from backend.app.models.domain import (
     AuditEvent,
@@ -301,6 +301,55 @@ def test_delete_job_removes_run_outputs(tmp_path: Path) -> None:
             assert db.query(QualityReport).filter(QualityReport.job_id == job_id).count() == 0
             assert db.query(ParsedAsset).filter(ParsedAsset.job_id == job_id).count() == 0
             assert db.get(FileRecord, file_record.id) is not None
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        db.close()
+
+
+def test_run_history_actions_are_backend_backed(tmp_path: Path) -> None:
+    db = make_session()
+    file_record = add_file_with_profile(
+        db,
+        tmp_path=tmp_path,
+        file_id="html-actions",
+        filename="actions.html",
+        file_type=FileType.HTML,
+        content=b"<html><body>Action run</body></html>",
+        modalities=[Modality.DOCUMENT, Modality.TEXT],
+        has_text_layer=True,
+        is_scanned=False,
+    )
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            response = run_job(client, file_record.id)
+            assert response.status_code == 201
+            job_id = response.json()["job"]["id"]
+
+            export_response = client.get("/api/v1/jobs/export")
+            assert export_response.status_code == 200
+            assert "text/csv" in export_response.headers["content-type"]
+            assert "actions.html" in export_response.text
+
+            review_response = client.post(f"/api/v1/jobs/{job_id}/send-to-review")
+            assert review_response.status_code == 200
+            assert review_response.json()["status"] == JobStatus.REVIEW_REQUIRED.value
+            review_item = (
+                db.query(ReviewItem)
+                .filter(ReviewItem.job_id == job_id, ReviewItem.status == ReviewStatus.OPEN.value)
+                .one_or_none()
+            )
+            assert review_item is not None
+
+            retry_response = client.post(f"/api/v1/jobs/{job_id}/retry")
+            assert retry_response.status_code == 201
+            retried_job_id = retry_response.json()["id"]
+            assert retried_job_id != job_id
+            assert db.get(ParseJob, retried_job_id) is not None
     finally:
         app.dependency_overrides.pop(get_db, None)
         db.close()

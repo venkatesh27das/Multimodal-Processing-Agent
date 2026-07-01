@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { formatQuality, type Job, type JobsStatusFilter } from "@/api/jobs";
 import {
   ActionButton,
@@ -40,6 +41,41 @@ const statusOptions: Array<{ label: string; value: JobsStatusFilter }> = [
   { label: "Queued", value: "queued" },
 ];
 
+const dateRangeOptions = [
+  { label: "All dates", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Last 7 days", value: "7d" },
+  { label: "Last 30 days", value: "30d" },
+] as const;
+
+type ColumnKey =
+  | "run"
+  | "objective"
+  | "parser"
+  | "status"
+  | "quality"
+  | "fallback"
+  | "started"
+  | "duration"
+  | "updated"
+  | "actions";
+
+const tableColumns: Array<{ key: ColumnKey; label: string; locked?: boolean }> = [
+  { key: "run", label: "Run / File", locked: true },
+  { key: "objective", label: "Objective" },
+  { key: "parser", label: "Parser" },
+  { key: "status", label: "Status" },
+  { key: "quality", label: "Quality" },
+  { key: "fallback", label: "Fallback" },
+  { key: "started", label: "Started" },
+  { key: "duration", label: "Duration" },
+  { key: "updated", label: "Updated" },
+  { key: "actions", label: "Actions", locked: true },
+];
+
+const defaultVisibleColumns = new Set<ColumnKey>(tableColumns.map((column) => column.key));
+const columnsStorageKey = "mmpa.runHistory.visibleColumns";
+
 export default function JobsPage() {
   const {
     jobs,
@@ -52,7 +88,14 @@ export default function JobsPage() {
     loadJobs,
     updateFilters,
   } = useJobs();
-  const actions = useJobActions({ onRefresh: loadJobs });
+  const actions = useJobActions({ filters, onRefresh: loadJobs });
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => readVisibleColumns());
+  const renderedColumns = tableColumns.filter((column) => visibleColumns.has(column.key));
+
+  useEffect(() => {
+    window.localStorage.setItem(columnsStorageKey, JSON.stringify(Array.from(visibleColumns)));
+  }, [visibleColumns]);
 
   const completed = jobs.filter((job) => job.statusKey === "completed").length;
   const review = jobs.filter((job) => job.reviewRequired).length;
@@ -115,13 +158,13 @@ export default function JobsPage() {
               ...parserOptions.map((parser) => ({ label: parser, value: parser })),
             ]}
           />
-          <label className="flex h-10 min-w-[210px] items-center gap-2 rounded-md border border-border bg-white px-3 text-sm shadow-panel">
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-bold text-muted">Date Range</span>
-              <span className="block truncate font-semibold text-ink">{dateRangeLabel(filters.dateRange)}</span>
-            </span>
-            <Calendar className="h-4 w-4 text-muted" aria-hidden="true" />
-          </label>
+          <FilterSelect
+            label="Date Range"
+            ariaLabel="Date range filter"
+            value={filters.dateRange}
+            onChange={(value) => updateFilters({ dateRange: value as typeof filters.dateRange })}
+            options={dateRangeOptions}
+          />
           <button
             className="ml-auto flex h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold text-muted"
             type="button"
@@ -192,7 +235,36 @@ export default function JobsPage() {
 
       <Card>
         <div className="flex justify-end gap-2 border-b border-border p-3">
-          <ActionButton icon={Columns3} variant="secondary">Columns</ActionButton>
+          <div className="relative">
+            <ActionButton icon={Columns3} variant="secondary" onClick={() => setColumnsOpen((open) => !open)}>
+              Columns
+            </ActionButton>
+            {columnsOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-56 rounded-md border border-border bg-white p-2 shadow-panel">
+                <p className="px-2 pb-2 text-xs font-bold text-muted">Visible columns</p>
+                {tableColumns.map((column) => (
+                  <label key={column.key} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-semibold text-ink hover:bg-surface">
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns.has(column.key)}
+                      disabled={column.locked}
+                      onChange={() => {
+                        if (column.locked) return;
+                        setVisibleColumns((current) => {
+                          const next = new Set(current);
+                          if (next.has(column.key)) next.delete(column.key);
+                          else next.add(column.key);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span>{column.label}</span>
+                    {column.locked ? <span className="ml-auto text-[11px] text-muted">Locked</span> : null}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <ActionButton
             icon={actions.busyAction === "export" ? Loader2 : Download}
             variant="secondary"
@@ -211,27 +283,16 @@ export default function JobsPage() {
         ) : null}
 
         <DataTable
-          columns={[
-            "Run / File",
-            "Objective",
-            "Parser",
-            "Status",
-            "Quality",
-            "Fallback",
-            "Started",
-            "Duration",
-            "Updated",
-            "Actions",
-          ]}
+          columns={renderedColumns.map((column) => column.label)}
           minWidth="1180px"
         >
           {loading ? <SkeletonRows /> : null}
           {!loading && filtered.jobs.map((job) => (
-            <JobRow key={job.id} job={job} actions={actions} />
+            <JobRow key={job.id} job={job} actions={actions} visibleColumns={visibleColumns} />
           ))}
           {!loading && !filtered.jobs.length ? (
             <tr>
-              <td colSpan={10} className="p-4">
+              <td colSpan={renderedColumns.length} className="p-4">
                 <EmptyState
                   icon={Search}
                   title="No runs match these filters"
@@ -293,9 +354,11 @@ export default function JobsPage() {
 function JobRow({
   job,
   actions,
+  visibleColumns,
 }: {
   job: Job;
   actions: ReturnType<typeof useJobActions>;
+  visibleColumns: Set<ColumnKey>;
 }) {
   const busyRetry = actions.busyAction === `retry-${job.id}`;
   const busyReview = actions.busyAction === `review-${job.id}`;
@@ -303,7 +366,7 @@ function JobRow({
 
   return (
     <tr className="hover:bg-surface">
-      <td className="px-4 py-2.5">
+      {visibleColumns.has("run") ? <td className="px-4 py-2.5">
         <div className="flex items-center gap-3">
           <FileTypeIcon type={job.fileType} />
           <div className="min-w-0">
@@ -311,23 +374,23 @@ function JobRow({
             <p className="text-xs text-muted">{job.fileSizeLabel} • {job.fileType.toUpperCase()}</p>
           </div>
         </div>
-      </td>
-      <td className="px-4 py-2.5 text-sm font-semibold text-ink">{job.objective}</td>
-      <td className="px-4 py-2.5 text-muted">{job.parser}</td>
-      <td className="px-4 py-2.5"><JobStatusPill job={job} /></td>
-      <td className="px-4 py-2.5">
+      </td> : null}
+      {visibleColumns.has("objective") ? <td className="px-4 py-2.5 text-sm font-semibold text-ink">{job.objective}</td> : null}
+      {visibleColumns.has("parser") ? <td className="px-4 py-2.5 text-muted">{job.parser}</td> : null}
+      {visibleColumns.has("status") ? <td className="px-4 py-2.5"><JobStatusPill job={job} /></td> : null}
+      {visibleColumns.has("quality") ? <td className="px-4 py-2.5">
         <span className={job.quality !== null && job.quality < 0.8 ? "font-bold text-warning" : "font-bold text-success"}>
           {job.quality !== null ? <span className="mr-2 inline-block h-2 w-2 rounded-full bg-current" /> : null}
           {formatQuality(job.quality)}
         </span>
-      </td>
-      <td className="px-4 py-2.5">
+      </td> : null}
+      {visibleColumns.has("fallback") ? <td className="px-4 py-2.5">
         {job.fallback ? <span className="text-muted">{job.fallbackParser ?? "Used"}</span> : <span className="text-muted">--</span>}
-      </td>
-      <td className="whitespace-pre-line px-4 py-2.5 text-muted">{job.startedAtLabel}</td>
-      <td className="px-4 py-2.5 text-muted">{job.durationLabel}</td>
-      <td className="px-4 py-2.5 text-muted">{job.updatedAtLabel}</td>
-      <td className="px-4 py-2.5">
+      </td> : null}
+      {visibleColumns.has("started") ? <td className="whitespace-pre-line px-4 py-2.5 text-muted">{job.startedAtLabel}</td> : null}
+      {visibleColumns.has("duration") ? <td className="px-4 py-2.5 text-muted">{job.durationLabel}</td> : null}
+      {visibleColumns.has("updated") ? <td className="px-4 py-2.5 text-muted">{job.updatedAtLabel}</td> : null}
+      {visibleColumns.has("actions") ? <td className="px-4 py-2.5">
         <div className="flex items-center justify-end gap-3">
           <button
             className="text-sm font-bold text-accent"
@@ -369,7 +432,7 @@ function JobRow({
             {busyDelete ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
           </button>
         </div>
-      </td>
+      </td> : null}
     </tr>
   );
 }
@@ -476,4 +539,24 @@ function dateRangeLabel(value: string) {
 function sparklineFromCount(count: number) {
   if (count <= 0) return [0, 0, 0, 0, 0, 0, 0];
   return [0, 0, 0, 0, 0, 0, count];
+}
+
+function readVisibleColumns(): Set<ColumnKey> {
+  if (typeof window === "undefined") return new Set(defaultVisibleColumns);
+  try {
+    const raw = window.localStorage.getItem(columnsStorageKey);
+    if (!raw) return new Set(defaultVisibleColumns);
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved)) return new Set(defaultVisibleColumns);
+    const validKeys = new Set(tableColumns.map((column) => column.key));
+    const next = new Set<ColumnKey>(
+      saved.filter((key): key is ColumnKey => typeof key === "string" && validKeys.has(key as ColumnKey)),
+    );
+    for (const column of tableColumns) {
+      if (column.locked) next.add(column.key);
+    }
+    return next.size ? next : new Set(defaultVisibleColumns);
+  } catch {
+    return new Set(defaultVisibleColumns);
+  }
 }

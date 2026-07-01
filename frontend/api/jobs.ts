@@ -367,8 +367,8 @@ export const jobsApi = {
     await request<void>(`/jobs/${jobId}`, { method: "DELETE" });
   },
 
-  exportJobs() {
-    return fetch(`${API_BASE_URL}/jobs/export`, { cache: "no-store" });
+  exportJobs(filters?: Partial<JobFilters>) {
+    return fetch(`${API_BASE_URL}/jobs/export${buildJobsQuery(filters)}`, { cache: "no-store" });
   },
 
   async planParseJob(

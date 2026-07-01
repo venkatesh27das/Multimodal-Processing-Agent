@@ -2,14 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { jobsApi, UnsupportedJobActionError, type Job } from "@/api/jobs";
+import { jobsApi, UnsupportedJobActionError, type Job, type JobFilters } from "@/api/jobs";
 
 export type ToastState = {
   tone: "success" | "warning" | "error";
   message: string;
 } | null;
 
-export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | void }) {
+export function useJobActions({
+  filters,
+  onRefresh,
+}: {
+  filters?: JobFilters;
+  onRefresh: () => Promise<void> | void;
+}) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -36,6 +42,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
       await jobsApi.sendToReview(job.id);
       setToast({ tone: "success", message: `${job.fileName} was sent to review.` });
       await onRefresh();
+      router.push(`/review-queue?job_id=${encodeURIComponent(job.id)}`);
     }, "Send to Review endpoint is not available yet.");
   }
 
@@ -59,7 +66,7 @@ export function useJobActions({ onRefresh }: { onRefresh: () => Promise<void> | 
     setBusyAction("export");
     setToast(null);
     try {
-      const response = await jobsApi.exportJobs();
+      const response = await jobsApi.exportJobs(filters);
       if (!response.ok) {
         if (response.status === 404 || response.status === 405) setExportUnsupported(true);
         setToast({ tone: "warning", message: "Export endpoint is not available yet." });

@@ -290,10 +290,18 @@ export const api = {
     });
   },
   listJobs() {
-    return request<ParseJob[]>("/jobs");
+    return request<ParseJob[] | { jobs: ParseJob[] }>("/jobs").then((response) => (
+      Array.isArray(response) ? response : response.jobs
+    ));
   },
   getJob(jobId: string) {
     return request<ParseJob>(`/jobs/${jobId}`);
+  },
+  retryJob(jobId: string) {
+    return request<ParseJob>(`/jobs/${jobId}/retry`, { method: "POST" });
+  },
+  sendJobToReview(jobId: string) {
+    return request<ParseJob>(`/jobs/${jobId}/send-to-review`, { method: "POST" });
   },
   getJobPlan(jobId: string) {
     return request<ParsingPlan>(`/jobs/${jobId}/plan`);

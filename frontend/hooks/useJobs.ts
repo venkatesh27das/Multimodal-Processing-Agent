@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  filterAndPaginateJobs,
   jobsApi,
   type Job,
   type JobFilters,
@@ -22,6 +21,13 @@ const defaultFilters: JobFilters = {
 
 export function useJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [filtered, setFiltered] = useState<PaginatedJobsResponse>({
+    jobs: [],
+    total: 0,
+    page: 1,
+    pageSize: defaultFilters.pageSize,
+    totalPages: 1,
+  });
   const [filters, setFilters] = useState<JobFilters>(defaultFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,24 +36,30 @@ export function useJobs() {
     setLoading(true);
     setError(null);
     try {
-      const nextJobs = await jobsApi.listJobs();
+      const [nextJobs, nextFiltered] = await Promise.all([
+        jobsApi.listJobs({ pageSize: 250 }),
+        jobsApi.listJobsPage(filters),
+      ]);
       setJobs(nextJobs);
+      setFiltered(nextFiltered);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load runs.");
       setJobs([]);
+      setFiltered({
+        jobs: [],
+        total: 0,
+        page: filters.page,
+        pageSize: filters.pageSize,
+        totalPages: 1,
+      });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filters]);
 
   useEffect(() => {
     loadJobs();
   }, [loadJobs]);
-
-  const filtered: PaginatedJobsResponse = useMemo(
-    () => filterAndPaginateJobs(jobs, filters),
-    [jobs, filters],
-  );
 
   const parserOptions = useMemo(
     () => Array.from(new Set(jobs.map((job) => job.parser))).sort(),

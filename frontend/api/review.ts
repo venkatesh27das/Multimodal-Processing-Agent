@@ -27,8 +27,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const reviewApi = {
-  listItems() {
-    return request<ReviewItem[]>("/review/items");
+  listItems(filters?: { jobId?: string | null }) {
+    const params = new URLSearchParams();
+    if (filters?.jobId) params.set("job_id", filters.jobId);
+    const query = params.toString();
+    return request<ReviewItem[]>(`/review/items${query ? `?${query}` : ""}`);
   },
 
   approveItem(reviewItemId: string, resolutionNotes?: string) {

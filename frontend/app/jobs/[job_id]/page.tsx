@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -56,34 +57,37 @@ const jobDetailTabs: Array<{ id: JobDetailTab; label: string }> = [
 ];
 
 export default function JobDetailPage({ params }: { params: { job_id: string } }) {
+  const router = useRouter();
   const [data, setData] = useState<DetailState | null>(null);
   const [agentTask, setAgentTask] = useState<AgentTaskDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<JobDetailTab>("overview");
   const [selectedOutputAsset, setSelectedOutputAsset] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const loadDetail = useCallback(async (jobId: string) => {
+    setError(null);
+    try {
+      const job = await api.getJob(jobId);
+      const [plan, quality, assets, file, profile] = await Promise.all([
+        api.getJobPlan(job.id).catch(() => null),
+        api.getJobQuality(job.id).catch(() => null),
+        api.getJobAssets(job.id).catch(() => [] as ParsedAsset[]),
+        api.getFile(job.file_id).catch(() => null),
+        api.getFileProfile(job.file_id).catch(() => null),
+      ]);
+      setData({ job, plan, quality, assets, file, profile });
+      setAgentTask(await agentApi.findTaskByJobId(job.id).catch(() => null));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load job detail.");
+      setData(null);
+      setAgentTask(null);
+    }
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      setError(null);
-      try {
-        const job = await api.getJob(params.job_id);
-        const [plan, quality, assets, file, profile] = await Promise.all([
-          api.getJobPlan(job.id).catch(() => null),
-          api.getJobQuality(job.id).catch(() => null),
-          api.getJobAssets(job.id).catch(() => [] as ParsedAsset[]),
-          api.getFile(job.file_id).catch(() => null),
-          api.getFileProfile(job.file_id).catch(() => null),
-        ]);
-        setData({ job, plan, quality, assets, file, profile });
-        setAgentTask(await agentApi.findTaskByJobId(job.id).catch(() => null));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load job detail.");
-        setData(null);
-        setAgentTask(null);
-      }
-    }
-    load();
-  }, [params.job_id]);
+    loadDetail(params.job_id);
+  }, [loadDetail, params.job_id]);
 
   const detail = data;
   const firstAsset = detail?.assets[0] ?? null;
@@ -116,6 +120,38 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
   const showOutputAsset = (kind: string) => {
     setSelectedOutputAsset(kind);
     setActiveTab("outputs");
+  };
+  const sendToReview = async () => {
+    if (!detail) return;
+    setBusyAction("review");
+    try {
+      await api.sendJobToReview(detail.job.id);
+      await loadDetail(detail.job.id);
+      router.push(`/review-queue?job_id=${encodeURIComponent(detail.job.id)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send run to review.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+  const retryRun = async () => {
+    if (!detail) return;
+    setBusyAction("retry");
+    try {
+      const retriedJob = await api.retryJob(detail.job.id);
+      router.push(`/jobs/${retriedJob.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to retry run.");
+      setBusyAction(null);
+    }
+  };
+  const openInAssets = () => {
+    if (!firstAsset) return;
+    router.push(`/assets/${firstAsset.id}`);
+  };
+  const exportSelectedAsset = () => {
+    if (!firstAsset || !selectedOutputKind) return;
+    downloadAssetCsv(firstAsset, selectedOutputKind, fileName);
   };
 
   if (!detail) {
@@ -170,9 +206,13 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <ActionButton icon={FolderOpen} variant="secondary" onClick={() => setActiveTab("outputs")}>Open Outputs</ActionButton>
-                    <ActionButton icon={Users} variant="secondary">Send to Review</ActionButton>
+                    <ActionButton icon={Users} variant="secondary" disabled={busyAction === "review"} onClick={sendToReview}>
+                      {busyAction === "review" ? "Sending" : "Send to Review"}
+                    </ActionButton>
                     <ActionButton icon={GitBranch} variant="secondary" onClick={() => setActiveTab("agent_trace")}>Open Agent Trace</ActionButton>
-                    <ActionButton icon={RefreshCw} variant="secondary">Retry Run</ActionButton>
+                    <ActionButton icon={RefreshCw} variant="secondary" disabled={busyAction === "retry"} onClick={retryRun}>
+                      {busyAction === "retry" ? "Retrying" : "Retry Run"}
+                    </ActionButton>
                   </div>
                 </div>
                 <div className="grid gap-3 border-t border-warning/30 pt-3 text-sm sm:grid-cols-3 lg:col-span-2">
@@ -239,7 +279,9 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                 <DetailRow label="Threshold" value={`${Math.round((detail.plan?.quality_threshold ?? 0.8) * 100)}%`} />
                 <DetailRow label="Recommended Action" value="Human validation" />
               </dl>
-              <ActionButton className="mt-4 w-full justify-center" icon={Send} variant="secondary">Send to Review</ActionButton>
+              <ActionButton className="mt-4 w-full justify-center" icon={Send} variant="secondary" disabled={busyAction === "review"} onClick={sendToReview}>
+                {busyAction === "review" ? "Sending" : "Send to Review"}
+              </ActionButton>
             </Card>
 
             <Card className="p-4">
@@ -336,9 +378,11 @@ export default function JobDetailPage({ params }: { params: { job_id: string } }
                 ))}
               </dl>
               <div className="mt-4 grid gap-2">
-                <ActionButton className="justify-center" icon={Download} variant="secondary">Export CSV</ActionButton>
-                <ActionButton className="justify-center" icon={FolderOpen} variant="secondary">Open in Assets</ActionButton>
-                <ActionButton className="justify-center" icon={Send} variant="primary">Send to Review</ActionButton>
+                <ActionButton className="justify-center" icon={Download} variant="secondary" disabled={!firstAsset || !selectedOutputKind} onClick={exportSelectedAsset}>Export CSV</ActionButton>
+                <ActionButton className="justify-center" icon={FolderOpen} variant="secondary" disabled={!firstAsset} onClick={openInAssets}>Open in Assets</ActionButton>
+                <ActionButton className="justify-center" icon={Send} variant="primary" disabled={busyAction === "review"} onClick={sendToReview}>
+                  {busyAction === "review" ? "Sending" : "Send to Review"}
+                </ActionButton>
               </div>
               {detail.quality?.human_review_required ? (
                 <div className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-xs text-warning">
@@ -1002,4 +1046,71 @@ function stringifyCell(value: unknown) {
   if (value === null || value === undefined) return "--";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
+}
+
+function downloadAssetCsv(asset: ParsedAsset, kind: string, fileName: string) {
+  const rows = csvRowsForAsset(asset, kind);
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${fileName.replace(/[^a-z0-9._-]+/gi, "-")}-${kind}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvRowsForAsset(asset: ParsedAsset, kind: string): string[][] {
+  if (kind === "tables") {
+    const table = asset.tables[0];
+    const rows = table?.rows;
+    if (Array.isArray(rows) && rows.length) {
+      return rows.map((row) => Array.isArray(row) ? row.map(stringifyCell) : [stringifyCell(row)]);
+    }
+    return [["message"], ["No tables extracted"]];
+  }
+  if (kind === "chunks") {
+    return [
+      ["index", "start_char", "end_char", "token_estimate", "text"],
+      ...asset.chunks.map((chunk) => [
+        stringifyCell(chunk.index),
+        stringifyCell(chunk.start_char),
+        stringifyCell(chunk.end_char),
+        stringifyCell(chunk.token_estimate),
+        stringifyCell(chunk.text),
+      ]),
+    ];
+  }
+  if (kind === "entities") {
+    return [
+      ["type", "text", "confidence", "source", "start_char", "end_char"],
+      ...asset.entities.map((entity) => [
+        stringifyCell(entity.type),
+        stringifyCell(entity.text ?? entity.value ?? entity.name),
+        stringifyCell(entity.confidence),
+        stringifyCell(entity.source),
+        stringifyCell(entity.start_char),
+        stringifyCell(entity.end_char),
+      ]),
+    ];
+  }
+  if (kind === "evidence") {
+    return [
+      ["evidence_id", "chunk_id", "source_filename", "start_char", "end_char"],
+      ...asset.evidence_spans.map((span) => [
+        stringifyCell(span.evidence_id),
+        stringifyCell(span.chunk_id),
+        stringifyCell(span.source_filename),
+        stringifyCell(span.start_char),
+        stringifyCell(span.end_char),
+      ]),
+    ];
+  }
+  if (kind === "parsed_content") return [["parsed_text"], [asset.parsed_text ?? ""]];
+  return [["kind", "payload"], [kind, JSON.stringify(asset.structured_data?.[kind] ?? asset.structured_data ?? {})]];
+}
+
+function csvCell(value: string) {
+  if (/[",\n\r]/.test(value)) return `"${value.replaceAll('"', '""')}"`;
+  return value;
 }

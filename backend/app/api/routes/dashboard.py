@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
@@ -64,8 +64,14 @@ def get_review_summary(db: Session = Depends(get_db)) -> ReviewSummaryResponse:
 
 
 @review_router.get("/items", response_model=list[ReviewItemRead])
-def list_review_items(db: Session = Depends(get_db)) -> list[ReviewItem]:
-    return db.query(ReviewItem).order_by(ReviewItem.created_at.desc()).all()
+def list_review_items(
+    job_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[ReviewItem]:
+    query = db.query(ReviewItem)
+    if job_id:
+        query = query.filter(ReviewItem.job_id == job_id)
+    return query.order_by(ReviewItem.created_at.desc()).all()
 
 
 @review_router.get("/items/{review_item_id}", response_model=ReviewItemRead)
